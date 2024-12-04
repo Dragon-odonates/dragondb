@@ -1,0 +1,122 @@
+# Header #############################################################
+#
+# Author: Lisa Nicvert
+# Email:  lisa.nicvert@fondationbiodiversite.fr
+#
+# Date: 2024-12-05
+#
+# Script Description: standardize different files column names according to 
+# Darwin Core standard
+
+
+# Libraries ---------------------------------------------------------------
+
+
+library(readxl)
+library(data.table)
+library(here)
+
+
+# Function ----------------------------------------------------------------
+
+
+#' Rename columns
+#'
+#' @param key a dataframe containing the correspondence between the new
+#' (in column `Standard`) and old (in column `nam`) column names.
+#' @param dtable A datatable for which columns must be renamed
+#' @param nam Name of the column of `key` in which to search old names.
+#'
+#' @return No value, sets the column names of `dtable`
+rename_cols <- function(key, dtable, nam) {
+  newnames_df <- names_key[!is.na(names_key[[nam]]), c("Standard", nam)]
+  newnames <- as.character(newnames_df[[nam]])
+  names(newnames) <- newnames_df$Standard
+  
+  setnames(dtable, newnames_df[[nam]], newnames_df$Standard)
+}
+
+# Read data ---------------------------------------------------------------
+
+dat <- list()
+
+dat[["Austria"]] <- data.table(read_excel("data/data_raw/Odonata_Austria_Export.xlsx", 
+                                          sheet = "Tabelle1"))
+
+dat[["Belgium1"]] <- data.table(readRDS("data/data_raw/belgieData.rds"))
+dat[["Belgium2"]] <- fread("data/data_raw/2024-076_libellen_EN.csv")
+
+dat[["Cyprus1"]] <- fread("data/data_raw/Cyprus corrected.csv")
+
+# Cyprus 2
+lf <- list.files("data/data_raw/Cyprus Data dragonflies")
+
+dat[["Cyprus2"]] <- data.table()
+for(i in seq_along(lf)){
+  cyp_data <- data.table(read_excel(file.path("data", "data_raw",
+                                              "Cyprus Data dragonflies", lf[i]), 
+                                    col_types = "text",
+                                    sheet = "Sheet1"))
+  # cyp_data[1356, Exuviae]
+  cyp_data <- setnames(cyp_data, names(cyp_data), 
+                       c("grid_ref_number", "species_scientific_name", 
+                         "date", "day", "month", "year", "stage", "count", 
+                         "larvae", "exuviae", "x_coord", "y_coord", 
+                         "longitude_ms", "latitude_ms", 
+                         "location_name", "altitutde_m"))
+  cyp_data[, y_coord := gsub("\\xff", "", 
+                             gsub("\\,", "\\.", y_coord, useBytes = TRUE), 
+                             useBytes = TRUE)]
+  cyp_data[, x_coord := gsub("\\xff", "", 
+                             gsub("\\,", "\\.", x_coord, useBytes = TRUE), 
+                             useBytes = TRUE)]
+  
+  dat[["Cyprus2"]] <- rbind(dat[["Cyprus2"]], cyp_data)
+}
+
+# Netherlands
+dat[["Netherlands"]] <- data.table(readRDS("data/data_raw/Dutchdata2023.RDS"))
+
+sp_ned <- fread("data/data_raw/Soortcodes_nl_sci.csv")
+sp_ned[, srt_Nednaam := tolower(srt_Nednaam)]
+dat[["Netherlands"]] <- merge(dat[["Netherlands"]], sp_ned, 
+                                   by.x = "soort_nl", by.y = "srt_Nednaam", 
+                                   all.x = TRUE)
+
+dat[["France_STELI"]] <- fread("data/data_raw/STELI_data_FR_DMS.csv")
+
+dat[["France_OPIE"]] <- fread("data/data_raw/France Opportunistics data (Opie)/odonata_202410091558.csv")
+
+
+# # Extract column names ----------------------------------------------------
+# dat_names <- lapply(dat, names)
+# 
+# nlen <- sapply(dat_names, length)
+# mlen <- max(nlen)
+# 
+# nalen <- mlen - nlen
+# dat_names_na <- lapply(seq_along(dat_names), 
+#                        function(i) c(dat_names[[i]], rep(NA, nalen[i]))
+# )
+# dat_names_df <- as.data.frame(dat_names_na)
+# 
+# names(dat_names_df) <- names(dat_names)
+# write.csv(dat_names_df, 
+#           file = here("outputs/column_names.csv"), 
+#           eol = "\r\n",
+#           row.names = FALSE)
+
+names_key <- read.csv(here("outputs/column_names.txt"),
+                      sep = "\t", na.strings = "")
+
+
+
+lapply(seq_along(dat), 
+       function(i) {
+         rename_cols(key = names_key, 
+                     dtable = dat[[i]], 
+                     nam = names(dat)[i])
+         })
+
+
+lapply(dat, names)

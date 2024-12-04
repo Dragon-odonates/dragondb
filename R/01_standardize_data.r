@@ -17,7 +17,7 @@ library(data.table)
 library(sf)
 library(mgrs)
 library(stringr)
-library(ggplot2)
+library(here)
 
 # Read data ---------------------------------------------------------------
 
