@@ -1,6 +1,6 @@
 Standard	Austria	Belgium1	Belgium2	Cyprus1	Cyprus2	Netherlands	France_STELI	France_OPIE	Remarks
 scientificNameID	Fauna_Europaea_ID	Soortcode	speciesid			species_id		cdnom	
-scientificName	Wissenschaftlicher Name	SpeciesName	name_lat	Species	species_scientific_name	srt_scientific	taxon	taxon	for STELI and OPIE taxon is longer, for Netherlands scientific name comes from other file (merged)
+scientificName	Wissenschaftlicher Name	SpeciesName	name_lat	Species	Species	srt_scientific	taxon	taxon	for STELI and OPIE taxon is longer, for Netherlands scientific name comes from other file (merged)
 nameAccordingTo	Autor								
 namePublishedInYear	Jahr								
 family			family						
@@ -8,19 +8,19 @@ taxonRank							rang		"Use controlled vocabulary (cf DwC page); usually will be 
 vernacularName		SoortNaamNl	name_eng			soort_nl			
 identificationVerificationStatus			status					statut_validation	
 occurrenceID			id				id_obs	odonata_id	
-eventDate		datum	date		date		date	date	
+eventDate		datum	date		Date		date	date	
 eventTime							heure debut		
-year	Jahr_bis	jaar		yyyy	year	jaar			
-month	Monat_bis	maand		Month	month	maand			
-day	Tag_bis	dag		Day	day	dag			
+year	Jahr_bis	jaar		yyyy	yyyy	jaar			
+month	Monat_bis	maand		Month	mm	maand			
+day	Tag_bis	dag		Day	dd	dag			
 eventDateUncertainty						datum_schaal			not DwC
 sex			sex						
 behavior			activity						Belgium2: is not the only info present (also vitality and comments)
-lifeStage			lifestage	Stage	stage	stadium			
+lifeStage			lifestage	Stage	Stage	stadium			
 individualCount			amount			aantal	effectif		
-lifeStage_count_a	Adulte			Number	count				
-lifeStage_count_e	Exuvie			Larvae	larvae				
-lifeStage_count_l	Larve			Exuviae	exuviae				
+lifeStage_count_a	Adulte			Number	Adult total				
+lifeStage_count_e	Exuvie			Larvae	Larvae				
+lifeStage_count_l	Larve			Exuviae	Exuviae				
 degreeOfEstablishment								autochtonie	
 samplingMethod			method						not DwC
 recordedBy	Kartierer_Name			Recorders			observateur	observateur	
@@ -28,12 +28,12 @@ recordedByID						waarnemer_uri	id_observateur
 samplingEffort							duree		
 entryDate			entry_date						not DwC
 deliveryDate			delivery_date						not DwC
-decimalLongitude	X_Koordinate_komma		lon	LONG	x_coord		lon centroid site	longitude	
-decimalLatitude	Y_Koordinate_komma		lat	LAT	y_coord		lat centroid site	latitude	
+decimalLongitude	X_Koordinate_komma		lon	LONG	E dec deg		lon centroid site	longitude	
+decimalLatitude	Y_Koordinate_komma		lat	LAT	N dec deg		lat centroid site	latitude	
 coordinateUncertaintyInMeters			precision	Accuracy		loc_schaal			
 verbatimCoordinates		utm1long	utm1						
-verbatimLongitude			x		longitude_ms	x			
-verbatimLatitude			y		latitude_ms	y			
+verbatimLongitude			x		E deg min sec	x			
+verbatimLatitude			y		N deg min sec	y			
 occurrenceRemarks			notes	Comments					
 associatedMedia						waarneming_uri			
 country	Staat			Country					
@@ -42,15 +42,15 @@ municipality			municipality				nom_commune	commune
 municipalityID							insee_commune		not DwC
 postcode							code_postal		not DwC
 submunicipality			submunicipality						not DwC
-locality	Ortsbezeichnung		location	Location	location_name		nom_site		
-verbatimElevation					altitutde_m			altitude	
+locality	Ortsbezeichnung		location	Location	Location name		nom_site		
+verbatimElevation					Altitude m asl			altitude	
 datasetName			source					jdd	
 accessRights			permission_observer						
 embargoDate			embargo_date						not DwC
 samplingProtocol									
 eventID			transect				protocole		
 eventType			type_transect	Record.type				sinp_uuid	
-gridRef				Ref.no	grid_ref_number			maille10km	not DwC
+gridRef				Ref.no	Ref no			maille10km	not DwC
 certain			certain						not DwC
 id_species			id_species						not DwC
 id_species_type			id_species_type						not DwC

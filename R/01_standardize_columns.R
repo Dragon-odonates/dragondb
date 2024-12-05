@@ -10,8 +10,6 @@
 
 
 # Libraries ---------------------------------------------------------------
-
-
 library(readxl)
 library(data.table)
 library(here)
@@ -57,19 +55,37 @@ for(i in seq_along(lf)){
                                               "Cyprus Data dragonflies", lf[i]), 
                                     col_types = "text",
                                     sheet = "Sheet1"))
-  # cyp_data[1356, Exuviae]
-  cyp_data <- setnames(cyp_data, names(cyp_data), 
-                       c("grid_ref_number", "species_scientific_name", 
-                         "date", "day", "month", "year", "stage", "count", 
-                         "larvae", "exuviae", "x_coord", "y_coord", 
-                         "longitude_ms", "latitude_ms", 
-                         "location_name", "altitutde_m"))
-  cyp_data[, y_coord := gsub("\\xff", "", 
-                             gsub("\\,", "\\.", y_coord, useBytes = TRUE), 
-                             useBytes = TRUE)]
-  cyp_data[, x_coord := gsub("\\xff", "", 
-                             gsub("\\,", "\\.", x_coord, useBytes = TRUE), 
-                             useBytes = TRUE)]
+  # Fix inconsistent names
+  if ("CY#"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "CY#", "Ref no")
+  }
+  if ("CY #"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "CY #", "Ref no")
+  }
+  if ("CY ref"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "CY ref", "Ref no")
+  }
+  if ("Altitude m"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "Altitude m", "Altitude m asl")
+  }
+  if ("Exuvia"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "Exuvia", "Exuviae")
+  }
+  if ("Total adults"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "Total adults", "Adult total")
+  }
+  if ("Total Adults"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "Total Adults", "Adult total")
+  }
+  if ("E deg dec"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "E deg dec", "E dec deg")
+  }
+  if ("N deg dec"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "N deg dec", "N dec deg")
+  }
+  if ("N dec dec"  %in% colnames(cyp_data)) {
+    setnames(cyp_data, "N dec dec", "N dec deg")
+  }
   
   dat[["Cyprus2"]] <- rbind(dat[["Cyprus2"]], cyp_data)
 }
@@ -118,5 +134,15 @@ lapply(seq_along(dat),
                      nam = names(dat)[i])
          })
 
-
 lapply(dat, names)
+
+
+
+ # Clean data in columns ---------------------------------------------------
+# cyp_data[, y_coord := gsub("\\xff", "", 
+#                            gsub("\\,", "\\.", y_coord, useBytes = TRUE), 
+#                            useBytes = TRUE)]
+# cyp_data[, x_coord := gsub("\\xff", "", 
+#                            gsub("\\,", "\\.", x_coord, useBytes = TRUE), 
+#                            useBytes = TRUE)]
+
