@@ -391,3 +391,13 @@ any(is.na(dat$Netherlands$decimalLongitude))
 lapply(dat, colnames)
 
 lapply(dat, nrow)
+
+
+# Write files -------------------------------------------------------------
+lapply(names(dat),
+       function(nam) write.table(dat[[nam]],
+                                 file = here(file.path("data/data_std",
+                                                       paste0(nam, ".csv"))),
+                                 row.names = FALSE,
+                                 sep = ",")
+       )
