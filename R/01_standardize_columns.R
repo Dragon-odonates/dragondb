@@ -69,20 +69,23 @@ clean_coord <- function(coord, na_char = "^\\s*$") {
   # Replace comma
   coord <- gsub(pattern = "\\,", replacement = "\\.", 
                 coord, useBytes = TRUE)
-  coord_new <- vector(mode = "character", 
-                      length = length(coord))
-  for (i in seq_along(coord_new)) {
-    # Match one or more digits followed by 0 or more points 
-    # followed by 0 or more digits
-    m <- regmatches(coord[i], regexpr("\\d+\\.*\\d*", coord[i],
-                                   useBytes = TRUE))
+  
+  # Function to return the match or NA if no match
+  match_or_na <- function(exp, reg) {
+    m <- regmatches(exp, regexpr(reg, exp,
+                                 useBytes = TRUE))
     if (length(m) == 0) {
       m <- NA
     }
-    coord_new[i] <- m
+    return(m)
   }
-
-  return(coord_new)
+  
+  coord <- unlist(lapply(coord, 
+                         match_or_na, reg = "\\d+\\.*\\d*")
+                  )
+  coord <- as.numeric(coord)
+  
+  return(coord)
 }
 
 # Read data ---------------------------------------------------------------
@@ -264,7 +267,8 @@ lapply(names_list,
        function(n) n[n$matchType == "NONE" | n$matchType == "FUZZY" ,][, c("verbatim_name", "canonicalName", "genus", "matchType")])
 
 names_merge <- lapply(names_list,
-                      function(n) data.table(n[, c("canonicalName", "verbatim_name")]))
+                      function(n) data.table(n[, c("canonicalName", "verbatim_name",
+                                                   "genus", "family", "rank")]))
 
 # lapply(seq_along(dat),
 #        function(i) merge(dat[[i]],
@@ -280,8 +284,8 @@ dat <- lapply(seq_along(dat),
 names(dat) <- names(names_merge)
 
 lapply(dat, setnames,
-       old = c("canonicalName", "verbatim_name"),
-       new = c("scientificName", "verbatimName"))
+       old = c("canonicalName", "verbatim_name", "rank"),
+       new = c("scientificName", "verbatimName", "taxonRank"))
 
 head(dat$Belgium1)
 
@@ -334,6 +338,7 @@ lapply(dat, function(d) head(d$decimalLongitude))
 lapply(dat, function(d) head(d$verbatimCoordinates))
 
 
+# Clean coordinates
 cols <- c("decimalLatitude", "decimalLongitude")
 lapply(dat,
        function(d) {
@@ -345,21 +350,11 @@ lapply(dat,
          }
        })
 
-# Check values
-i <- 0
-for (d in dat) {
-  i <- i + 1
-  print(paste("Rep", i, "---------"))
-  
-  tst_lon_num <- as.numeric(d$decimalLongitude)
-  print(d$decimalLongitude[which(is.na(tst_lon_num))])
-  
-  tst_lat_num <- as.numeric(d$decimalLatitude)
-  print(d$decimalLatitude[which(is.na(tst_lat_num))])
-}
+dat$France_STELI[, c("lon centroid site", "lat centroid site") := 
+                   .(clean_coord("lon centroid site"),
+                     clean_coord("lat centroid site"))]
 
 # Convert coordinates
-
 dat_convert <- lapply(dat,
                       function(d) !("decimalLongitude" %in% colnames(d)))
 
@@ -388,12 +383,79 @@ dat$Netherlands[, c("decimalLongitude", "decimalLatitude")
 any(is.na(dat$Netherlands$decimalLatitude))
 any(is.na(dat$Netherlands$decimalLongitude))
 
-lapply(dat, colnames)
+# Convert all to geometries
+to_convert <- names(dat)[names(dat) != "France_STELI"]
+lapply(to_convert,
+       function(nam) {
+         dat[[nam]][, decimalCoordinates := 
+                      st_as_text(st_as_sf(dat[[nam]], 
+                                          coords = c("decimalLongitude", 
+                                                     "decimalLatitude"),
+                                          na.fail = FALSE)$geometry)]
+         })
 
+# Add country
+countries <- c("Austria",
+               "Belgium",
+               "Belgium",
+               "Cyprus",
+               "Cyprus",
+               "Netherlands",
+               "France",
+               "France")
+names(countries) <- names(dat)  
+
+
+## parentDataset ------------------------------------------------------
+
+lapply(dat, colnames)
 lapply(dat, nrow)
 
 
-# Write files -------------------------------------------------------------
+lapply(seq_along(dat), 
+       function(i) dat[[i]][, "parentDataset" := names(dat)[i]])
+
+dat_info <- data.table(read_excel(here("data/data_raw/contacts.xlsx"), 
+                                  sheet = 1))
+dat_info[, parentDataset := ""]
+
+dat_info[c(1, 3, 6, 8, 11, 13, 14, 15), 
+         parentDatasetName := c("Belgium1", "Netherlands",
+                                "Austria", "Belgium2",
+                                "Cyprus1", "France_OPIE", "France_OPIE",
+                                "France_STELI")]
+
+cyp2 <- dat_info[parentDatasetName == "Cyprus1",]
+cyp2$parentDatasetName <- "Cyprus2"
+
+dat_info <- rbind(dat_info, 
+                  cyp2)
+
+dat_info <- dat_info[parentDatasetName != "", 
+                     c("Name", "email", "parentDatasetName")]
+
+# Not sure for Belgium1/2 data and Austria
+dat_info[, samplingProtocol := c("transect", 
+                                 "opportunistic",
+                                 "opportunistic",
+                                 "opportunistic",
+                                 "opportunistic",
+                                 "site counts",
+                                 "site counts",
+                                 "opportunistic",
+                                 "opportunistic")]
+
+setnames(dat_info, 
+         old = c("Name", "email"),
+         new = c("contactName", "contactEmail"))
+
+write.table(dat_info,
+            file = here("data/data_std/dataset_info.csv"),
+            row.names = FALSE,
+            sep = ",")
+
+
+# Write files ------------------------------------------------------------------
 lapply(names(dat),
        function(nam) write.table(dat[[nam]],
                                  file = here(file.path("data/data_std",

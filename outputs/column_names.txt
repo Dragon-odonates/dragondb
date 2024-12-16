@@ -4,7 +4,7 @@ scientificName	Wissenschaftlicher Name	SpeciesName	name_lat	Species	Species	srt_
 nameAccordingTo	Autor								
 namePublishedInYear	Jahr								
 family			family						
-taxonRank							rang		"Use controlled vocabulary (cf DwC page); usually will be species"
+verbatimTaxonRank							rang		
 vernacularName		SoortNaamNl	name_eng			soort_nl			
 identificationVerificationStatus			status					statut_validation	
 occurrenceID			id				id_obs	odonata_id	
@@ -28,8 +28,9 @@ recordedByID						waarnemer_uri	id_observateur
 samplingEffort							duree		
 entryDate			entry_date						not DwC
 deliveryDate			delivery_date						not DwC
-decimalLongitude	X_Koordinate_komma		lon	LONG	E dec deg		lon centroid site	longitude	
-decimalLatitude	Y_Koordinate_komma		lat	LAT	N dec deg		lat centroid site	latitude	
+decimalLongitude	X_Koordinate_komma		lon	LONG	E dec deg			longitude	
+decimalLatitude	Y_Koordinate_komma		lat	LAT	N dec deg			latitude	
+decimalCoordinates							coordonnees observation		not DwC
 coordinateUncertaintyInMeters			precision	Accuracy		loc_schaal			
 verbatimCoordinates		utm1long	utm1						
 verbatimLongitude			x		E deg min sec	x			
@@ -47,8 +48,7 @@ verbatimElevation					Altitude m asl			altitude
 datasetName			source					jdd	
 accessRights			permission_observer						
 embargoDate			embargo_date						not DwC
-samplingProtocol									
-eventID			transect				protocole		
+eventID			transect						
 eventType			type_transect	Record.type				sinp_uuid	
 gridRef				Ref.no	Ref no			maille10km	not DwC
 certain			certain						not DwC
@@ -80,5 +80,9 @@ habitat_terre_1							habitat terre 1		not DwC
 habitat_terre_2							habitat terre 2		not DwC
 habitat_terre_3							habitat terre 3		not DwC
 activites_humaines							activites humaines		not DwC
+protocole							protocole		
+geometry_site							geometry_site		
+lon centroid site							lon centroid site		
+lat centroid site							lat centroid site		
 validateur_atlas								validateur_atlas	not DwC
 date_validation_atlas								date_validation_atlas	not DwC
