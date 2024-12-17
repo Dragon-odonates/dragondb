@@ -1,0 +1,9 @@
+^DragonDB\.Rproj$
+^\.Rproj\.user$
+^analyses$
+^data$
+^outputs$
+^\.gitignore$
+^\.gitattributes$
+^\.Renviron$
+^LICENSE\.md$
