@@ -246,15 +246,77 @@ names(dat) <- nam
 
 # Recode columns ----------------------------------------------------------
 
-# To write
+## Recode life stage -----
 
+# Select data that need recoding
+lifestage_key <- c("adult", "exuvia", "larva")
+names(lifestage_key) <- c("lifeStage_count_a",
+                          "lifeStage_count_e",
+                          "lifeStage_count_l")
+
+dat_recode_names <- unlist(lapply(dat,
+                                  function(d) any(grepl("^lifeStage_count",
+                                                        names(d)))
+                                  )
+                           )
+
+dat_recode_names <- names(dat_recode_names)[dat_recode_names]
+
+# Convert to numeric
+lapply(dat[dat_recode_names],
+       function(d) {
+         d[, names(.SD) := lapply(.SD, clean_count),
+           .SDcols = patterns("^lifeStage_count", cols = names(d))]
+         return(NULL)
+         }
+       )
+# A few data from Cyprus are lost
+
+# Convert pseudo-zeros to NA
+for (nam in dat_recode_names) {
+
+  d <- dat[[nam]]
+
+  # Get lifeStage columns
+  cols <- grep("^lifeStage_count", x = names(d), value = TRUE)
+
+  # Get rows for which there was at least one obs
+  pseudo_zeroes <- which(rowSums(d[, ..cols]) != 0)
+
+  # For these rows, transform all zeroes to NAs
+  d[pseudo_zeroes,
+    names(.SD) := lapply(.SD, function(v) ifelse(v == 0, NA, v)),
+    .SDcols = cols]
+}
+
+# Reshape data
+for (nam in dat_recode_names) {
+  d <- dat[[nam]]
+
+  if ("lifeStage" %in% names(d)) {
+    d[, lifeStage := NULL]
+  }
+  if ("count" %in% names(d)) {
+    d[, count := NULL]
+  }
+
+  dat[[nam]] <- melt(d,
+                     measure.vars = patterns("^lifeStage_count"),
+                     variable.name = "lifeStage", value.name = "count",
+                     na.rm = TRUE)
+  dat[[nam]][, lifeStage := lifestage_key[lifeStage]]
+
+  dat[[nam]] <- dat[[nam]][count != 0]
+}
+
+lapply(dat, head)
 
 # Write files ------------------------------------------------------------------
-# lapply(names(dat),
-#        function(nam) write.table(dat[[nam]],
-#                                  file = here(file.path("data/03_data_clean",
-#                                                        paste0(nam, ".csv"))),
-#                                  row.names = FALSE,
-#                                  qmethod = "double",
-#                                  sep = ",")
-# )
+lapply(names(dat),
+       function(nam) write.table(dat[[nam]],
+                                 file = here(file.path("data/03_data_clean",
+                                                       paste0(nam, ".csv"))),
+                                 row.names = FALSE,
+                                 qmethod = "double",
+                                 sep = ",")
+)

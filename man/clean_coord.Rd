@@ -9,7 +9,7 @@ clean_coord(coord, na_char = "^\\\\s*$")
 \arguments{
 \item{coord}{coordinates vector}
 
-\item{na_char}{Regular expression to matcxh and replace with NA.
+\item{na_char}{Regular expression to match and replace with NA.
 Defaults to all blank characters (or empty characters)}
 }
 \value{
