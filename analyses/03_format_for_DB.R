@@ -9,20 +9,71 @@
 
 
 
-read_folder <- here("data/03_data_clean/tmp")
+# Libraries ---------------------------------------------------------------
+library(here)
+library(data.table)
+
+library(RPostgres)
+
+library(dragondb)
+
+read_folder <- here("data/03_data_clean")
+
 
 # Read data ---------------------------------------------------------------
 
 ls <- list.files(read_folder,
                  full.names = TRUE)
+ls <- grep(pattern = "tmp$", ls, invert = TRUE, value = TRUE)
 nam <- gsub("\\.csv$", "", basename(ls))
 
 dat <- lapply(ls,
               fread,
               header = TRUE,
               na.strings = c("", "NA"),
+              nrows = 15,
               sep = ",")
 names(dat) <- nam
+
+
+# Connect to DB -----------------------------------------------------------
+# Connect to "local" DB
+con <- dbConnect(
+  drv       = RPostgres::Postgres(), # dbDriver("PostgreSQL"),
+  dbname    = "dragon",
+  host      = "localhost", # "192.168.0.75",
+  port      = 5432,
+  user      = Sys.getenv('USERNAME'),
+  password  = Sys.getenv('PASSWORD')
+)
+# Check DB
+dbListTables(con)
+
+# dbDisconnect(con)
+
+lapply(dat, setnames,
+       old = "GBIFkey",
+       new = "taxonID")
+
+
+# Atomize data & copy to DB -----------------------------------------------
+
+## Species -----
+colnames <- colnames_DB(con, "Taxon", rm_ID = FALSE)
+
+spdf <- lapply(dat, function(d) d[, ..colnames])
+
+spdf <- do.call("rbind",
+                c(spdf, fill = TRUE))
+
+spdf <- unique(spdf)
+spdf <- na.omit(spdf)
+
+dbAppendTable(con, "Taxon", spdf)
+
+## Observer -----
+obdf <- lapply(dat, function(d) d[, .(recordedBy, recordedByID)])
+
 
 
 # Format data -------------------------------------------------------------

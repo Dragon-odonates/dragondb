@@ -119,7 +119,7 @@ names(dat) <- names(names_merge)
 
 lapply(dat, setnames,
        old = c("canonicalName", "verbatim_name", "rank", "usageKey"),
-       new = c("scientificName", "verbatimName", "taxonRank", 'GBIFkey'))
+       new = c("scientificName", "verbatimName", "taxonRank", "taxonID"))
 
 ## Date -----
 date_fmt <- vector(mode = "list", length = length(dat))
