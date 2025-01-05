@@ -14,26 +14,6 @@ library(data.table)
 library(RPostgres)
 
 
-# Function ----------------------------------------------------------------
-#' Get DB column names
-#'
-#' @param connexion connexion to the table (class `PqConnection`)
-#' @param table table to retrieve names from
-#' @param rm_ID Remove ID column? (columns that end with ID)
-#'
-#' @return The table column names
-colnames_DB <- function(connexion,
-                        table, rm_ID = TRUE) {
-
-  colnames <- dbListFields(connexion, table)
-
-  if (rm_ID) {
-    colnames <- colnames[-grep("ID$", colnames)]
-  }
-  return(colnames)
-}
-
-
 read_folder <- here("data/03_data_clean/tmp")
 
 # Read CSV ----------------------------------------------------------------
