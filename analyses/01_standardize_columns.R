@@ -17,8 +17,8 @@ library(here)
 
 library(dragondb)
 
-read_folder <- here("data/01_data_raw/occurrence_data")
-read_folder_meta <- here("data/01_data_raw/metadata")
+read_folder <- here("data/01_data_raw")
+read_folder_meta <- here("data/metadata/01_raw")
 
 # Read data ---------------------------------------------------------------
 
