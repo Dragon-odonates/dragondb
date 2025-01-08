@@ -25,8 +25,6 @@ library(dragondb)
 
 read_folder <- here("data/02_data_std")
 
-read_folder_meta <- here("data/01_data_raw/metadata")
-
 # Read data ---------------------------------------------------------------
 ls <- list.files(read_folder,
                  full.names = TRUE)
@@ -188,8 +186,8 @@ lapply(names_clean,
        })
 
 dat$France_STELI[, c("lon centroid site", "lat centroid site") :=
-                   .(clean_coord("lon centroid site"),
-                     clean_coord("lat centroid site"))]
+                   .(clean_coord(`lon centroid site`),
+                     clean_coord(`lat centroid site`))]
 
 # Convert coordinates
 (names_convert)
