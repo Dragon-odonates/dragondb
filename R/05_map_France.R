@@ -22,10 +22,16 @@ library(scales)
 
 library(dragondb)
 
+library(doParallel)
+library(foreach)
+
 read_folder <- here("data/03_data_clean")
+fig_path <- here("outputs/05_France")
 
+detectCores()
+registerDoParallel(cores = detectCores()-2)
 
-# Read data ---------------------------------------------------------------
+# Read data all.tests = # Read data ---------------------------------------------------------------
 ls <- list.files(read_folder,
                  full.names = TRUE)
 ls <- grep(pattern = "France", ls, value = TRUE)
@@ -57,15 +63,11 @@ regions <- ne_states(country = "France") |>
 # regions <- ne_download(scale = 10,
 #                        type = "admin_1_states_provinces",
 #                        category = "cultural")
-# regions <- regions |> filter(admin == "France")
+# regions <- regions |> filter(admin == "France") |>
+#   select(name, region, type) |>
+#   rename(department = name)
 
 regions <- st_make_valid(regions)
-
-# lim <- st_bbox(regions |> filter(type == "Metropolitan département"))
-#
-# plot(regions,
-#      ylim = lim[c(2, 4)],
-#      xlim = lim[c(1, 3)])
 
 # Intersect ---------------------------------------------------------------
 
@@ -78,27 +80,67 @@ st_crs(dat) <- 4326
 # st_geometry(dat) <- st_centroid(dat)
 
 # Get regions points are in
-# datsub <- dat[sample(1:nrow(dat), size = 1000), ]
+id <- st_intersects(dat, regions)
+id[sapply(id, function(i) length(i) == 0)] <- NA
+id <- unlist(id)
 
-# plot(st_geometry(datsub))
-# plot(st_geometry(regions), add = TRUE)
+rmerge <- st_drop_geometry(regions[id, ])
 
-dat <- st_intersection(dat, regions)
-st_geometry(datsub)[!st_geometry(datsub) %in% st_geometry(datsub2)]
-
-missing <- datsub[!(st_geometry(datsub) %in% st_geometry(datsub2)),]
-
-plot(st_geometry(missing), col = "red", pch = 16)
-plot(st_geometry(regions), add = TRUE)
+dat <- cbind(dat, rmerge)
 
 
-# Summarize ---------------------------------------------------------------
+# saveRDS(object = dat, file = here("data/05_France/data.rds"))
+# dat <- readRDS(here("data/05_France/data.rds"))
+
+
+# Add NAs ---------------------------------------------------------------
+
+# Select NA values
+dat_na <- dat[which(is.na(dat$region)), ] |>
+  select(-c(region, type, department))
+nrow(dat_na)
 
 regions_metro <- regions |>
   filter(type == "Metropolitan département")
 
+ggplot(dat_na) +
+  geom_sf(data = regions_metro) +
+  geom_sf(color = "red") +
+  theme_void()
+
+# Add buffer around regions to select NAs
+reg_buff <- st_buffer(regions, dist = 500)
+
+id <- st_intersects(dat_na, reg_buff)
+id[sapply(id, function(i) length(i) != 1)] <- NA
+# != 1 because with buffers some points are in several regions
+id <- unlist(id)
+
+rmerge <- st_drop_geometry(reg_buff[id, ])
+
+dat_na <- cbind(dat_na, rmerge)
+
+# Replace NAs
+dat[which(is.na(dat$region)), ] <- dat_na
+
+# Plot final NAs
+sum(is.na(dat$region))
+
+dat_na <- dat[which(is.na(dat$region)), ] |>
+  select(-c(region, type, department))
+
+ggplot(dat_na) +
+  geom_sf(data = regions_metro) +
+  geom_sf(color = "cornflowerblue") +
+  theme_void()
+
+# saveRDS(object = dat, file = here("data/05_France/data_nas.rds"))
+# dat <- readRDS(here("data/05_France/data_nas.rds"))
+
+# Summarize ---------------------------------------------------------------
+
 # By region
-dat_region <- datsub2 |>
+dat_region <- dat |>
   st_drop_geometry() |>
   group_by(region) |>
   summarize(nobs = n()) |>
@@ -124,7 +166,7 @@ regions_df <- regions_df |>
 
 
 # By department
-dat_dpt <- datsub2 |>
+dat_dpt <- dat |>
   st_drop_geometry() |>
   group_by(department) |>
   summarize(nobs = n())
@@ -132,26 +174,103 @@ dat_dpt <- datsub2 |>
 dpt_df <- regions_metro |>
   left_join(dat_dpt, by = "department")
 
-# Plot --------------------------------------------------------------------
+# Plot maps --------------------------------------------------------------------
+
+# lim <- st_bbox(regions |> filter(type == "Metropolitan département"))
+#
+# plot(regions,
+#      ylim = lim[c(2, 4)],
+#      xlim = lim[c(1, 3)])
+
 
 # Regions
 ggplot(regions_df) +
   geom_sf(aes(fill = nobs),
           show.legend = FALSE) +
-  scale_fill_gradient(low = "#bbfff1", high = "#004b45") +
-  geom_sf_text(aes(label = nobs,
-                   col = nobs > mean(nobs, na.rm = TRUE)),
-               show.legend = FALSE) +
+  scale_fill_gradient(low = "#bbfff1", high = "#004b45",
+                      transform = "log10") +
+  geom_sf_text(aes(label = format(nobs, big.mark = " "),
+                   col = log10(nobs) > max(log10(nobs), na.rm = TRUE)/2),
+               show.legend = FALSE,
+               size = 4) +
   scale_color_manual(values = c("black", "white")) +
   theme_void()
+
+ggsave(file.path(fig_path, "map_regions.png"),
+       width = 30, height = 30, units = "cm", dpi = 300)
+
 
 # Departments
 ggplot(dpt_df) +
   geom_sf(aes(fill = nobs),
           show.legend = FALSE) +
-  scale_fill_gradient(low = "#bbfff1", high = "#004b45") +
-  geom_sf_text(aes(label = nobs,
-                   col = nobs > mean(nobs, na.rm = TRUE)),
-               show.legend = FALSE) +
+  scale_fill_gradient(low = "#bbfff1", high = "#004b45",
+                      na.value = "grey90",
+                      transform = "log10") +
+  geom_sf_text(aes(label = format(nobs, big.mark = " "),
+                   col = log10(nobs) > max(log10(nobs), na.rm = TRUE)/2),
+               show.legend = FALSE,
+               size = 4) +
+  scale_color_manual(values = c("black", "white"),
+                     na.value = "transparent") +
+  theme_void()
+
+ggsave(file.path(fig_path, "map_dpt.png"),
+       width = 30, height = 30, units = "cm", dpi = 300)
+
+
+# By program -----------------------------------------------------------
+
+df_source <- st_drop_geometry(dat) |>
+  group_by(source, department) |>
+  summarize(nobs = n())
+
+df_source <- regions_metro |>
+  right_join(df_source, by = "department")
+
+ggplot(df_source) +
+  facet_grid(cols = vars(source)) +
+  geom_sf(data = regions_metro, fill = "grey90") +
+  geom_sf(aes(fill = nobs),
+          show.legend = FALSE) +
+  scale_fill_gradient(low = "#bbfff1", high = "#004b45",
+                      transform = "log10") +
+  geom_sf_text(aes(label = format(nobs, big.mark = " "),
+                   col = log10(nobs) > max(log10(nobs), na.rm = TRUE)/2),
+               show.legend = FALSE,
+               size = 2) +
   scale_color_manual(values = c("black", "white")) +
   theme_void()
+
+ggsave(file.path(fig_path, "map_opie_vs_steli.png"),
+       width = 30, height = 15, units = "cm", dpi = 300)
+
+st_drop_geometry(df_source) |>
+  group_by(source) |>
+  summarise(nobs = sum(nobs))
+
+
+# Species stats -----------------------------------------------------------
+
+(dat_sp <- st_drop_geometry(dat) |>
+  group_by(scientificName) |>
+  summarize(nobs = n()) |>
+   arrange(desc(nobs)))
+
+nrow(dat_sp[!is.na(dat_sp$scientificName), ])
+
+dat_sp_plot <- dat_sp[1:50, ]
+
+ggplot(dat_sp_plot) +
+  geom_col(aes(y = reorder(scientificName, nobs), x = nobs)) +
+  scale_x_continuous(expand = c(0,0)) +
+  xlab("# occurrences") +
+  theme_minimal() +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 5),
+        axis.text.y = element_text(face = "italic",
+                                   size = 5))
+
+
+ggsave(file.path(fig_path, "sp_occ.png"),
+       width = 15, height = 10, units = "cm", dpi = 300)
