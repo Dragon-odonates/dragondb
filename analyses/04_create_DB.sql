@@ -14,43 +14,48 @@ DROP TABLE IF EXISTS "Occurrence" CASCADE;
 -- Create tables
 CREATE TABLE "Taxon"(
   "taxonID" INT PRIMARY KEY NOT NULL,
-  "scientificName" VARCHAR(60),
+  "scientificName" VARCHAR(60) UNIQUE,
   "genus" VARCHAR(30),
-  "family" VARCHAR(40),
-  "taxonRank" VARCHAR(20)
+  "family" VARCHAR(40) NOT NULL,
+  "taxonRank" VARCHAR(20) NOT NULL
+  CONSTRAINT spp_taxo CHECK ("scientificName" IS NULL OR ("genus" IS NOT NULL AND "family" IS NOT NULL))
+  CONSTRAINT genus_taxo CHECK ("genus" IS NULL OR "family" IS NOT NULL)
 );
 
 CREATE TABLE "Recorder"(
   "recorderID" SERIAL PRIMARY KEY NOT NULL,
+  "recorderID_orig" VARCHAR(100),
   "name" VARCHAR(100)
 );
 
 CREATE TABLE "Date"(
   "dateID" SERIAL PRIMARY KEY NOT NULL,
-  "year" INT,
-  "month" INT,
-  "day" INT,
+  "year" INT CHECK ("year" > 0),
+  "month" INT CHECK ("month" >= 1 and "month" <= 12),
+  "day" INT CHECK ("day" >= 1 and "day" <= 31),
   "time" TIME without time zone,
   "eventDateUncertainty" VARCHAR(50)
   );
 
 CREATE TABLE "ParentDataset"(
   "parentDatasetID" SERIAL PRIMARY KEY NOT NULL,
-  "parentDatasetName" VARCHAR(20)
+  "parentDatasetName" VARCHAR(20) UNIQUE
 );
 
 CREATE TABLE "Dataset"(
   "datasetID" SERIAL PRIMARY KEY NOT NULL,
-  "datasetName" VARCHAR(20),
-  "samplingProtocol" VARCHAR(20),
+  "datasetName" VARCHAR(80) UNIQUE,
+  "samplingProtocol" VARCHAR(20) CHECK ("samplingProtocol" IN ('transect',
+                                        'opportinistic', 'site counts')),
   "description" VARCHAR(200),
   "parentDataset" INT REFERENCES "ParentDataset"("parentDatasetID")
 );
 
 CREATE TABLE "Contact"(
   "contactID" SERIAL PRIMARY KEY NOT NULL,
-  "contactName" VARCHAR(200),
-  "contactEmail" VARCHAR(200)
+  "contactName" VARCHAR(100) UNIQUE,
+  "organisation" VARCHAR(100),
+  "contactEmail" VARCHAR(100) UNIQUE
 );
 
 CREATE TABLE "DatasetContact"(
@@ -73,6 +78,8 @@ CREATE TABLE "Location"(
   "municipality" VARCHAR(100),
   "county" VARCHAR(100),
   "country" VARCHAR(50)
+  CONSTRAINT complete_loc CHECK ("decimalCoordinates" IS NULL OR
+                                 ("county" IS NOT NULL AND "county" IS NOT NULL))
 );
 
 CREATE TABLE "Event"(
