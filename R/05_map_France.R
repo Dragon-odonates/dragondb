@@ -264,7 +264,8 @@ ggsave(file.path(fig_path, "map_opie_vs_steli.png"),
 
 st_drop_geometry(df_source) |>
   group_by(source) |>
-  summarise(nobs = sum(nobs))
+  summarise(nobs = sum(nobs)) |>
+  mutate(prop = nobs/sum(nobs))
 
 
 ## Species stats -----------------------------------------------------------
@@ -272,7 +273,7 @@ st_drop_geometry(df_source) |>
 backbone_check <- name_backbone_checklist(unique(dat$scientificName))
 
 sp_backbone <- backbone_check |>
-  filter(rank %in% c("SPECIES", "SUBSPECIES"))
+  filter(rank %in% c("SPECIES"))
 
 dat_sp <- dat |>
   filter(!is.na(scientificName)) |>
@@ -281,7 +282,18 @@ dat_sp <- dat |>
 (sp_df <- st_drop_geometry(dat_sp) |>
   group_by(scientificName) |>
   summarize(nobs = n()) |>
-   arrange(desc(nobs)))
+  arrange(desc(nobs)))
+
+sp_df <- sp_df |>
+  left_join(sp_backbone |>
+              select(usageKey, canonicalName, scientificName,
+                     genus, family) |>
+              rename("fullName" = "scientificName"),
+            by = c("scientificName" = "canonicalName"))
+
+write.csv(sp_df,
+          here("data/05_France/French_spp.csv"),
+          row.names = FALSE)
 
 nrow(sp_df[!is.na(sp_df$scientificName), ])
 
@@ -366,3 +378,69 @@ ggplot(dat_dpt) +
 ggsave(file.path(fig_path, "map_dpt.png"),
        width = 30, height = 30, units = "cm", dpi = 300)
 
+
+
+# Temporal evolution ------------------------------------------------------
+dat_temp <- dat |>
+  st_drop_geometry()
+
+dat_temp <- dat_temp |>
+  mutate(year = year(eventDate)) |>
+  group_by(year, source) |>
+  summarize(nobs = n())
+
+ggplot(dat_temp) +
+  geom_line(aes(x = year, y = nobs)) +
+  facet_wrap(facet = vars(source), scales = "free")
+
+dat_temp <- dat_temp |>
+  group_by(year) |>
+  summarize(nobs = sum(nobs))
+
+ggplot(dat_temp) +
+  geom_line(aes(x = year, y = nobs)) +
+  xlim(1980, 2025) +
+  theme_minimal() +
+  xlab("Année") +
+  ylab("Observations") +
+  scale_y_continuous(labels =  function(x) format(x, big.mark = " "))
+
+ggsave(file.path(fig_path, "count.png"),
+       width = 10, height = 7, units = "cm", dpi = 300)
+
+ggplot(dat_temp) +
+  geom_line(aes(x = year, y = nobs), linewidth = 1) +
+  xlim(1979, 2024) +
+  theme_void() +
+  theme(axis.text.x =element_text(size = 22))
+
+ggsave(file.path(fig_path, "count2.png"),
+       width = 12, height = 7, units = "cm", dpi = 300)
+
+# Map Europe PNA -----------------------------------------------------------------
+
+europe <- ne_countries(continent = "Europe")
+
+ggplot(europe) +
+  geom_sf() +
+  xlim(-8, 50) +
+  ylim(30, 70) +
+  theme_void()
+ggsave(file.path(fig_path, "map_europe.png"),
+       width = 8, height = 10, units = "cm", dpi = 300)
+
+ggplot(europe) +
+  geom_sf(fill = "transparent") +
+  xlim(-8, 50) +
+  ylim(30, 70) +
+  theme_void()
+ggsave(file.path(fig_path, "map_europe-transp.png"),
+       width = 8, height = 10, units = "cm", dpi = 300)
+
+
+france <- regions_metro |> st_union()
+ggplot(france) +
+  geom_sf() +
+  theme_void()
+ggsave(file.path(fig_path, "map_france.png"),
+       width = 10, height = 10, units = "cm", dpi = 300)
