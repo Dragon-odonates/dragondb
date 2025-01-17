@@ -1,0 +1,361 @@
+---
+title: "Analyse des données françaises"
+format:
+  html:
+    code-fold: true
+    embed-resources: true
+editor: source
+---
+
+## Packages
+
+```{r}
+library(here)
+library(data.table)
+
+# For spatial info
+library(rnaturalearth)
+library(sf)
+library(dplyr)
+
+library(ggplot2)
+library(scales)
+library(DT)
+library(rgbif)
+
+library(dragondb)
+
+read_folder <- here("data/05_France")
+fig_path <- here("outputs/05_France")
+```
+
+## Lecture des données
+
+```{r}
+dat <- readRDS(file.path(read_folder, "data.rds"))
+dpt_metro <- readRDS(file.path(read_folder, "dpt.rds"))
+regions_metro <- readRDS(file.path(read_folder, "regions.rds"))
+```
+
+
+## Nombre d'observations
+
+### Total
+
+```{r}
+# By region
+dat_regions <- dat |>
+  st_drop_geometry() |>
+  group_by(region) |>
+  filter(!is.na(scientificName) & !is.na(region)) |>
+  summarize(nobs = n()) |>
+  distinct()
+
+# Add nobs
+dat_regions <- regions_metro |>
+  left_join(dat_regions, by = "region")
+
+# By department
+dat_dpt <- dat |>
+  st_drop_geometry() |>
+  group_by(department) |>
+  filter(!is.na(scientificName) & !is.na(region)) |>
+  summarize(nobs = n())
+
+dat_dpt <- dpt_metro |>
+  left_join(dat_dpt, by = "department")
+```
+
+```{r}
+dat_regions |>
+  select(-type) |> 
+  st_drop_geometry() |> 
+  datatable()
+
+dat_dpt |>
+  select(-type) |> 
+  st_drop_geometry() |> 
+  datatable()
+```
+
+
+```{r, fig.width=7, fig.height=7}
+# Regions
+ggplot(dat_regions) +
+  geom_sf(aes(fill = nobs),
+          show.legend = FALSE) +
+  scale_fill_gradient(low = "#bbfff1", high = "#004b45",
+                      transform = "log10") +
+  geom_sf_text(aes(label = format(nobs, big.mark = " "),
+                   col = log10(nobs) > max(log10(nobs), na.rm = TRUE)/2),
+               show.legend = FALSE,
+               size = 6) +
+  scale_color_manual(values = c("black", "white")) +
+  ggtitle("Nombre d'observations par région") +
+  theme_void()
+
+# ggsave(file.path(fig_path, "map_regions.png"),
+#        width = 30, height = 30, units = "cm", dpi = 300)
+
+# Departments
+ggplot(dat_dpt) +
+  geom_sf(aes(fill = nobs),
+          show.legend = FALSE) +
+  scale_fill_gradient(low = "#bbfff1", high = "#004b45",
+                      na.value = "grey90",
+                      transform = "log10") +
+  geom_sf_text(aes(label = format(nobs, big.mark = " "),
+                   col = log10(nobs) > max(log10(nobs), na.rm = TRUE)/2),
+               show.legend = FALSE,
+               size = 4) +
+  scale_color_manual(values = c("black", "white"),
+                     na.value = "transparent") +
+    ggtitle("Nombre d'observations par département") +
+  theme_void()
+
+# ggsave(file.path(fig_path, "map_dpt.png"),
+#        width = 30, height = 30, units = "cm", dpi = 300)
+```
+
+### Par programme
+
+```{r}
+df_source <- st_drop_geometry(dat) |>
+  group_by(source, department) |>
+  summarize(nobs = n())
+
+df_source <- dpt_metro |>
+  right_join(df_source, by = "department")
+
+ggplot(df_source) +
+  facet_grid(cols = vars(source)) +
+  geom_sf(data = regions_metro, fill = "grey90") +
+  geom_sf(aes(fill = nobs),
+          show.legend = FALSE) +
+  scale_fill_gradient(low = "#bbfff1", high = "#004b45",
+                      transform = "log10") +
+  geom_sf_text(aes(label = format(nobs, big.mark = " "),
+                   col = log10(nobs) > max(log10(nobs), na.rm = TRUE)/2),
+               show.legend = FALSE,
+               size = 2) +
+  scale_color_manual(values = c("black", "white")) +
+  theme_void()
+
+# ggsave(file.path(fig_path, "map_atlas_vs_steli.png"),
+#        width = 30, height = 15, units = "cm", dpi = 300)
+```
+
+```{r}
+st_drop_geometry(df_source) |>
+  group_by(source) |>
+  summarise(nobs = sum(nobs)) |>
+  mutate(prop = nobs/sum(nobs)) |> 
+  datatable()
+```
+
+
+## Statistiques espèces
+
+```{r}
+backbone_check <- name_backbone_checklist(unique(dat$scientificName))
+
+sp_backbone <- backbone_check |>
+  filter(rank %in% c("SPECIES"))
+
+dat_sp <- dat |>
+  filter(!is.na(scientificName)) |>
+  filter(scientificName %in% sp_backbone$verbatim_name)
+
+sp_df <- st_drop_geometry(dat_sp) |>
+  group_by(scientificName) |>
+  summarize(nobs = n()) |>
+  arrange(desc(nobs))
+
+sp_df <- sp_df |>
+  left_join(sp_backbone |>
+              select(usageKey, canonicalName, scientificName,
+                     genus, family) |>
+              rename("fullName" = "scientificName"),
+            by = c("scientificName" = "canonicalName"))
+
+sp_df |> 
+  datatable()
+```
+
+
+Nombre d'espèces observées :
+
+```{r}
+nrow(sp_df[!is.na(sp_df$scientificName), ])
+```
+
+
+```{r}
+sp_df_plot <- sp_df[1:20, ]
+
+ggplot(sp_df_plot) +
+  geom_col(aes(y = reorder(scientificName, nobs), x = nobs),
+           fill = "darkorange") +
+  scale_x_continuous(expand = c(0,0)) +
+  xlab("Occurrences") +
+  theme_minimal() +
+  ggtitle("Nombre d'observation des 20 espèces les plus communes") +
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_text(size = 12),
+        axis.text.y = element_text(face = "italic",
+                                   size = 8))
+
+# ggsave(file.path(fig_path, "sp_occ.png"),
+#        width = 12, height = 8, units = "cm", dpi = 300)
+```
+
+
+```{r}
+# By region
+dat_regions <- dat_sp |>
+  st_drop_geometry() |>
+  group_by(region) |>
+  filter(!is.na(scientificName) & !is.na(region)) |>
+  summarize(nsp = length(unique(scientificName))) |>
+  distinct()
+
+# Add nobs
+dat_regions <- regions_metro |>
+  left_join(dat_regions, by = "region")
+
+# By department
+dat_dpt <- dat_sp |>
+  st_drop_geometry() |>
+  group_by(department) |>
+  filter(!is.na(scientificName) & !is.na(region)) |>
+  summarize(nsp = length(unique(scientificName)))
+
+dat_dpt <- dpt_metro |>
+  left_join(dat_dpt, by = "department")
+```
+
+
+```{r}
+dat_sp |>
+  st_drop_geometry() |>
+  group_by(region, scientificName) |>
+  filter(!is.na(scientificName) & !is.na(region)) |>
+  summarize(nobs = n()) |>
+  arrange(region, scientificName) |> 
+  datatable()
+```
+
+
+```{r}
+# Regions
+ggplot(dat_regions) +
+  geom_sf(aes(fill = nsp),
+          show.legend = FALSE) +
+  scale_fill_gradient(low = "#fadeff", high = "#42054d") +
+  geom_sf_text(aes(label = nsp,
+                   col = nsp > max(nsp)/2),
+               show.legend = FALSE,
+               size = 8) +
+  ggtitle("Nombre d'espèces par région") +
+  scale_color_manual(values = c("black", "white")) +
+  theme_void()
+
+# ggsave(file.path(fig_path, "map_regions_nsp.png"),
+#        width = 30, height = 30, units = "cm", dpi = 300)
+
+
+# Departments
+ggplot(dat_dpt) +
+  geom_sf(aes(fill = nsp),
+          show.legend = FALSE) +
+  scale_fill_gradient(low = "#fadeff", high = "#42054d",
+                      na.value = "grey90") +
+  geom_sf_text(aes(label = nsp,
+                   col = nsp > max(nsp, na.rm = TRUE)/2),
+               show.legend = FALSE,
+               size = 4) +
+    ggtitle("Nombre d'espèces par département") +
+  scale_color_manual(values = c("black", "white")) +
+  theme_void()
+
+# ggsave(file.path(fig_path, "map_dpt.png"),
+#        width = 30, height = 30, units = "cm", dpi = 300)
+```
+
+## Evolution temporelle
+
+```{r}
+dat_temp <- dat |>
+  st_drop_geometry()
+
+dat_temp <- dat_temp |>
+  mutate(year = year(eventDate)) |>
+  group_by(year, source) |>
+  summarize(nobs = n())
+
+ggplot(dat_temp) +
+  geom_line(aes(x = year, y = nobs)) +
+  facet_wrap(facet = vars(source), scales = "free") +
+  theme_minimal()
+```
+
+
+```{r}
+dat_temp <- dat_temp |>
+  group_by(year) |>
+  summarize(nobs = sum(nobs))
+
+ggplot(dat_temp) +
+  geom_line(aes(x = year, y = nobs)) +
+  xlim(1980, 2025) +
+  theme_minimal() +
+  xlab("Année") +
+  ylab("Observations") +
+  scale_y_continuous(labels =  function(x) format(x, big.mark = " "))
+
+# ggsave(file.path(fig_path, "count.png"),
+#        width = 10, height = 7, units = "cm", dpi = 300)
+
+# ggplot(dat_temp) +
+#   geom_line(aes(x = year, y = nobs), linewidth = 1) +
+#   xlim(1979, 2024) +
+#   theme_void() +
+#   theme(axis.text.x =element_text(size = 22))
+# 
+# ggsave(file.path(fig_path, "count2.png"),
+#        width = 12, height = 7, units = "cm", dpi = 300)
+```
+
+## Fonds de carte
+
+```{r}
+# # Carte Europe
+# 
+# europe <- ne_countries(continent = "Europe")
+# 
+# ggplot(europe) +
+#   geom_sf() +
+#   xlim(-8, 50) +
+#   ylim(30, 70) +
+#   theme_void()
+# # ggsave(file.path(fig_path, "map_europe.png"),
+# #        width = 8, height = 10, units = "cm", dpi = 300)
+# 
+# ggplot(europe) +
+#   geom_sf(fill = "transparent") +
+#   xlim(-8, 50) +
+#   ylim(30, 70) +
+#   theme_void()
+# # ggsave(file.path(fig_path, "map_europe-transp.png"),
+# #        width = 8, height = 10, units = "cm", dpi = 300)
+# 
+# 
+# france <- regions_metro |> st_union()
+# ggplot(france) +
+#   geom_sf() +
+#   theme_void()
+# # ggsave(file.path(fig_path, "map_france.png"),
+# #        width = 10, height = 10, units = "cm", dpi = 300)
+
+```
+

@@ -1,0 +1,165 @@
+---
+title: "Prepare data"
+format: 
+  html:
+    embed-resources: true
+editor: source
+---
+
+## Chargement des packages
+
+```{r}
+library(here)
+library(data.table)
+
+# For spatial info
+library(rnaturalearth)
+library(sf)
+library(dplyr)
+
+library(ggplot2)
+
+read_folder <- here("data/03_data_clean")
+```
+
+
+## Lecture
+```{r}
+ls <- list.files(read_folder,
+                 full.names = TRUE)
+ls <- grep(pattern = "France", ls, value = TRUE)
+nam <- gsub("\\.csv$", "", basename(ls))
+
+dat <- lapply(ls,
+              fread,
+              header = TRUE,
+              sep = ",")
+```
+
+## Mise en forme
+
+```{r}
+dat[[1]][, source := "atlas"]
+dat[[2]][, source := "STELI"]
+
+dat <- lapply(dat,
+              function(d) d[, .(scientificName, taxonID,
+                                decimalCoordinates,
+                                eventDate, source)])
+
+
+dat <- do.call("rbind", dat)
+```
+
+## Régions
+
+```{r}
+dpt <- ne_states(country = "France") |>
+  select(name, region, type) |>
+  rename(department = name)
+
+dpt <- st_make_valid(dpt)
+
+# Intersect regions with data ---
+# Convert to sf
+dat <- na.omit(dat, cols = "decimalCoordinates")
+dat <- st_as_sf(dat, wkt = "decimalCoordinates")
+st_crs(dat) <- 4326
+
+# Get centroid
+# st_geometry(dat) <- st_centroid(dat)
+
+# Get regions points are in
+id <- st_intersects(dat, dpt)
+id[sapply(id, function(i) length(i) == 0)] <- NA
+id <- unlist(id)
+
+rmerge <- st_drop_geometry(dpt[id, ])
+
+dat <- cbind(dat, rmerge)
+```
+
+## Buffer pour données hors territoire
+
+```{r}
+# Select NA values
+dat_na <- dat[which(is.na(dat$region)), ] |>
+  select(-c(region, type, department))
+nrow(dat_na)
+
+dpt_metro <- dpt |>
+  filter(type == "Metropolitan département")
+
+ggplot(dat_na) +
+  geom_sf(data = dpt_metro) +
+  geom_sf(color = "red") +
+  ggtitle(paste("Before buffer: ", nrow(dat_na), "NAs")) +
+  theme_void()
+```
+
+
+```{r}
+# Add buffer around departments to remove out-of-territory points
+reg_buff <- st_buffer(dpt, dist = 500)
+
+id <- st_intersects(dat_na, reg_buff)
+id[sapply(id, function(i) length(i) != 1)] <- NA
+# != 1 because with buffers some points are in several departments
+id <- unlist(id)
+
+rmerge <- st_drop_geometry(reg_buff[id, ])
+
+dat_na <- cbind(dat_na, rmerge)
+
+# Replace NAs
+dat[which(is.na(dat$region)), ] <- dat_na
+
+# Plot final NAs
+sum(is.na(dat$region))
+
+dat_na <- dat[which(is.na(dat$region)), ] |>
+  select(-c(region, type, department))
+
+ggplot(dat_na) +
+  geom_sf(data = dpt_metro) +
+  geom_sf(color = "cornflowerblue") +
+  ggtitle(paste("After buffer: ", nrow(dat_na), "NAs")) +
+  theme_void()
+```
+
+## Données métropolitaines
+
+```{r}
+# Prepare data -------------------------------------------------
+dpt_metro <- dpt |> filter(type == "Metropolitan département")
+
+# Get administrative regions
+regions <- st_sfc()
+st_crs(regions) <- 4326
+
+for (r in unique(dpt$region)) {
+  # Get region polygon
+  dpt_in_reg <- dpt |> filter(region == r)
+  un <- st_union(dpt_in_reg)
+
+  # Add region name
+  res <- st_sf(region = r,
+               type = unique(dpt_in_reg$type),
+               geom = un)
+
+  # Add to df
+  regions <- rbind(regions, res)
+}
+
+regions_metro <- regions |>
+  filter(type == "Metropolitan département")
+```
+
+## Sauvegarde
+
+```{r}
+saveRDS(object = dat, file = here("data/05_France/data.rds"))
+saveRDS(object = dpt_metro, file = here("data/05_France/dpt.rds"))
+saveRDS(object = regions_metro, file = here("data/05_France/regions.rds"))
+```
+
