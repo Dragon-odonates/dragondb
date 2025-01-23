@@ -25,7 +25,8 @@ CREATE TABLE "Taxon"(
 CREATE TABLE "Recorder"(
   "recorderID" SERIAL PRIMARY KEY NOT NULL,
   "recorderID_orig" VARCHAR(100),
-  "name" VARCHAR(100)
+  "name" VARCHAR(100),
+  UNIQUE NULLS NOT DISTINCT ("recorderID_orig", "name")
 );
 
 CREATE TABLE "Date"(
@@ -34,7 +35,8 @@ CREATE TABLE "Date"(
   "month" INT CHECK ("month" >= 1 and "month" <= 12),
   "day" INT CHECK ("day" >= 1 and "day" <= 31),
   "time" TIME without time zone,
-  "eventDateUncertainty" VARCHAR(50)
+  "eventDateUncertainty" VARCHAR(50),
+  UNIQUE NULLS NOT DISTINCT ("year", "month", "day", "time", "eventDateUncertainty")
   );
 
 CREATE TABLE "ParentDataset"(
@@ -46,7 +48,7 @@ CREATE TABLE "Dataset"(
   "datasetID" SERIAL PRIMARY KEY NOT NULL,
   "datasetName" VARCHAR(80) UNIQUE,
   "samplingProtocol" VARCHAR(20) CHECK ("samplingProtocol" IN ('transect',
-                                        'opportinistic', 'site counts')),
+                                        'opportunistic', 'site counts')),
   "description" VARCHAR(200),
   "parentDataset" INT REFERENCES "ParentDataset"("parentDatasetID")
 );

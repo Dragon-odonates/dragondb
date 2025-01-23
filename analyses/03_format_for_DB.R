@@ -17,6 +17,8 @@ library(RPostgres)
 
 library(readxl)
 
+library(rvest) # read htlm
+
 # For spatial info
 library(rnaturalearth)
 library(sf)
@@ -41,7 +43,6 @@ dat <- lapply(ls,
               nrows = 15,
               sep = ",")
 names(dat) <- nam
-
 
 # Connect to DB -----------------------------------------------------------
 # Connect to "local" DB
@@ -81,6 +82,21 @@ obdf <- lapply(dat, df_all_cols, cols = cols)
 obdf <- lapply(obdf, unique)
 obdf <- lapply(obdf, rm_all_na)
 
+# Get observer name for Nl
+observer_css_class <- ".app-content-title"
+
+obdf$Netherlands[, recordedBy := as.character(recordedBy)]
+
+for (i in 1:nrow(obdf$Netherlands)) {
+  page <- obdf$Netherlands$recordedByID[i]
+  txt <- read_html(page)
+
+  observer_name <- txt |>
+    html_node(css = observer_css_class) |>
+    html_text(trim = TRUE)
+  obdf$Netherlands[i, recordedBy := observer_name]
+}
+
 obdf <- do.call("rbind",
                 c(obdf, fill = TRUE))
 
@@ -104,17 +120,8 @@ dtdf <- rm_all_na(dtdf)
 dbAppendTable(con, "Date", dtdf)
 
 ## Parent dataset -----
-padf_db <- dbGetQuery(con, 'SELECT *
-                    FROM "ParentDataset";')
-padf_db <- data.table(padf_db)
-
 padf <- data.table(parentDatasetName = c("Belgium2",
                                          "France_OPIE"))
-padf <- merge(padf_db,
-              padf,
-              by = "parentDatasetName",
-              all = TRUE)
-padf <- padf[, .(parentDatasetName)]
 
 dbAppendTable(con, "ParentDataset", padf)
 
@@ -137,9 +144,9 @@ dadf <- lapply(seq_along(dadf),
 
                  df[, parentDataset := as.numeric(parentDataset)]
 
-                 if (all(is.na(df$datasetName)) ) {
-                   df[, datasetName := datname]
-                 } else {
+                 if (all(is.na(df$datasetName)) ) { # There is no dataset name
+                   df[, datasetName := datname] # use list names
+                 } else { # There are sub-datasets -> add parent dataset
                    parent_ID <- padf_db[parentDatasetName == datname,
                                         parentDatasetID]
                    df[, parentDataset := parent_ID]
@@ -148,6 +155,50 @@ dadf <- lapply(seq_along(dadf),
 
 dadf <- do.call("rbind",
                 dadf)
+
+# Add sampling protocol
+datinfo <- data.table(read_excel(
+  here("data/metadata/02_modified/Datasets_review.xlsx")))
+
+# Add parent datasets IDs
+pa_in_dat <- padf_db[parentDatasetID %in% unique(dadf$parentDataset),]
+datinfo <- pa_in_dat[datinfo,
+                     on = "parentDatasetName"]
+
+# Complete sampling info
+dadf[, samplingProtocol := as.character(samplingProtocol)]
+
+for (i in 1:nrow(dadf)) {
+  ds <- dadf[i, datasetName]
+
+  # TO FIX LATER
+  if (ds == "Cyprus2") {
+    ds <- "Cyprus1"
+  }
+
+  if (!is.null(ds)) {
+    dii <- datinfo_ds[datasetName == ds,]
+
+    # TO FIX LATER
+    if (ds == "Belgium1") {
+      dii <- dii[1, ]
+    }
+  } else {
+    dii <- data.frame()
+  }
+
+  if (nrow(dii) != 0) { # Case dataset has a sampling protocol
+    dadf[i, samplingProtocol := dii$samplingProtocol]
+  } else { # dataset doesn't have a sampling protocol: use parent
+    pds <- dadf[i, parentDataset]
+    dii <- datinfo[parentDatasetID == pds,]
+
+    if (nrow(dii) == 0) {
+      warning("No sampling found for dataset ", ds)
+    }
+    dadf[i, samplingProtocol := dii$samplingProtocol]
+  }
+}
 
 dbAppendTable(con, "Dataset", dadf)
 
