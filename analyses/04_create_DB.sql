@@ -55,9 +55,10 @@ CREATE TABLE "Dataset"(
 
 CREATE TABLE "Contact"(
   "contactID" SERIAL PRIMARY KEY NOT NULL,
-  "contactName" VARCHAR(100) UNIQUE,
+  "contactName" VARCHAR(100),
   "organisation" VARCHAR(100),
-  "contactEmail" VARCHAR(100) UNIQUE
+  "contactEmail" VARCHAR(100),
+  UNIQUE ("contactName", "contactEmail")
 );
 
 CREATE TABLE "DatasetContact"(

@@ -18,6 +18,7 @@ library(RPostgres)
 library(readxl)
 
 library(rvest) # read htlm
+library(stringr)
 
 # For spatial info
 library(rnaturalearth)
@@ -205,42 +206,65 @@ dbAppendTable(con, "Dataset", dadf)
 ## Contact -----
 cols <- colnames_DB(con, "Contact", rm_ID = TRUE)
 
-codf <- lapply(dat, df_all_cols, cols = cols)
-
-contacts_df <- data.table(read_excel(here("data/metadata/02_modified/contacts.xlsx"),
+contacts_df <- data.table(read_excel(here("data/metadata/01_raw/contacts.xlsx"),
                                      sheet = 1))
+
+contacts_df$ID <- 1:nrow(contacts_df)
+
+# Separate datasets ---
+# Separate names
+split <- lapply(contacts_df$datasetName, str_split, pattern = ", ")
+split <- lapply(split, unlist)
+
+# Format to df
+split <- data.table(do.call("rbind", split))
+split[, ID := contacts_df$ID]
+# Wide to long
+split <- melt(split, id.vars = "ID",
+              value.name = "datasetName")
+split[, variable := NULL]
+split <- split[!is.na(datasetName), ] # remove empty values
+split <- unique(split) # remove duplicates introduced by rbind
+
+contacts_df[, datasetName := NULL] # rm datasetNames
+
+contacts_df <- split[contacts_df, on = "ID"] # merge to get duplicated contacts
+
+# Get only contacts in DB
+padf_db <- dbGetQuery(con, 'SELECT * FROM "ParentDataset";')
+padf_db <- data.table(padf_db)
+dadf_db <- dbGetQuery(con, 'SELECT * FROM "Dataset";')
+dadf_db <- data.table(dadf_db)
+
+contacts_df <- contacts_df[(datasetName %in% dadf_db$datasetName) |
+                           (parentDatasetName %in% padf_db$parentDatasetName),]
 
 codf <- df_all_cols(contacts_df, cols = cols)
 
 codf <- unique(codf)
 
-if(any(duplicated(codf))) {
-  warning("Duplicated contacts")
-}
-
 dbAppendTable(con, "Contact", codf)
+
 
 ## DatasetContact -----
 
-# Get dataset
+# Get datasets in DB
 dadf_db <- data.table(dbGetQuery(con, 'SELECT "datasetID", "datasetName"
                                  FROM "Dataset";'))
 
-# Merge dataset ID with contacts
+# Add dataset ID to contacts table
 cols <- c("datasetID", "datasetName",
           "contactName", "contactEmail")
-
 dcdf <- contacts_df[dadf_db,
                 on = "datasetName", ..cols]
-dcdf <- na.omit(dcdf, cols = "datasetID")
 
-# Merge contacts ID with contacts
-codf_db <- data.table(dbGetQuery(con, 'SELECT "contactID", "contactName"
+# Add contacts ID to contacts
+codf_db <- data.table(dbGetQuery(con, 'SELECT "contactID", "contactName", "contactEmail"
                                  FROM "Contact";'))
 
 dcdf <- codf_db[dcdf,
-                on = "contactName"]
-dcdf <- na.omit(dcdf, cols = "contactID")
+                on = c("contactName", "contactEmail")]
+dcdf <- na.omit(dcdf, cols = "contactID") # some datasets have no contact
 
 # Insert in table
 dcdf <- dcdf[, .(datasetID, contactID)]
@@ -253,22 +277,20 @@ dbAppendTable(con, "DatasetContact", dcdf)
 
 ## ParentDatasetContact -----
 
-# Get parent dataset
+# Get parent datasets in DB
 pddf_db <- data.table(dbGetQuery(con, 'SELECT "parentDatasetID", "parentDatasetName"
                                  FROM "ParentDataset";'))
 
-# Merge dataset ID with contacts
+# Add parents dataset ID to contacts
 cols <- c("parentDatasetID", "parentDatasetName",
           "contactName", "contactEmail")
-
 dcdf <- contacts_df[pddf_db,
                     on = "parentDatasetName", ..cols]
-dcdf <- na.omit(dcdf, cols = "parentDatasetID")
 
-# Merge contacts ID with contacts
+# Add contacts ID to contacts
 dcdf <- codf_db[dcdf,
-                on = "contactName"]
-dcdf <- na.omit(dcdf, cols = "contactID")
+                on = c("contactName", "contactEmail")]
+dcdf <- na.omit(dcdf, cols = "contactID") # some parent datasets have no contact
 
 # Insert in table
 dcdf <- dcdf[, .(parentDatasetID, contactID)]
