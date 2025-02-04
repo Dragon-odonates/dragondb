@@ -25,18 +25,16 @@ CREATE TABLE "Taxon"(
 CREATE TABLE "Recorder"(
   "recorderID" SERIAL PRIMARY KEY NOT NULL,
   "recorderID_orig" VARCHAR(100),
-  "name" VARCHAR(100),
+  "name" VARCHAR(300),
   UNIQUE NULLS NOT DISTINCT ("recorderID_orig", "name")
 );
 
 CREATE TABLE "Date"(
   "dateID" SERIAL PRIMARY KEY NOT NULL,
-  "year" INT CHECK ("year" > 0),
-  "month" INT CHECK ("month" >= 1 and "month" <= 12),
-  "day" INT CHECK ("day" >= 1 and "day" <= 31),
+  "date" date,
   "time" TIME without time zone,
-  "eventDateUncertainty" VARCHAR(50),
-  UNIQUE NULLS NOT DISTINCT ("year", "month", "day", "time", "eventDateUncertainty")
+  "dateUncertainty" VARCHAR(50),
+  UNIQUE NULLS NOT DISTINCT ("date", "time", "dateUncertainty")
   );
 
 CREATE TABLE "ParentDataset"(

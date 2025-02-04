@@ -34,6 +34,7 @@ nam <- gsub("\\.csv$", "", basename(ls))
 dat <- lapply(ls,
               fread,
               header = TRUE,
+              nrows = 100,
               na.strings = c("", "NA"),
               sep = ",")
 names(dat) <- nam
@@ -137,11 +138,29 @@ lapply(names(dat),
          print(n)
          if ("eventDate" %in% colnames(dat[[n]])) {
            dat[[n]][, eventDate := as.IDate(eventDate,
-                                            format = date_fmt[[n]]
-           )]
-           dat[[n]][, c("year", "month", "day") := .(year(eventDate),
-                                                     month(eventDate),
-                                                     mday(eventDate))]
+                                            format = date_fmt[[n]])
+                   ]
+           dat[[n]][, "dateUncertainty"] <- "day"
+         } else {
+           # Determine uncertainty & replace values
+           for (i in 1:nrow(dat[[n]])) {
+             if (is.na(dat[[n]][i, year])) {
+               prec <- "nodate"
+             } else if (is.na(dat[[n]][i, month])) {
+               prec <- "year"
+               dat[[n]][i, c("month", "day") := .(1, 1)]
+             } else if (is.na(dat[[n]][i, day])) {
+               prec <- "month"
+               dat[[n]][i, day := 1]
+             } else {
+               prec <- "day"
+             }
+             dat[[n]][i, dateUncertainty := prec]
+           }
+           dat[[n]][, eventDate := as.IDate(paste(year,
+                                                  month,
+                                                  day, sep = "-"),
+                                            format = "%Y-%m-%d")]
          }
        }
 )
@@ -185,9 +204,9 @@ lapply(names_clean,
          return(NULL)
        })
 
-dat$France_STELI[, c("lon centroid site", "lat centroid site") :=
-                   .(clean_coord(`lon centroid site`),
-                     clean_coord(`lat centroid site`))]
+# dat$France_STELI[, c("lon centroid site", "lat centroid site") :=
+#                    .(clean_coord(`lon centroid site`),
+#                      clean_coord(`lat centroid site`))]
 
 # Convert coordinates
 (names_convert)
@@ -221,26 +240,26 @@ lapply(to_convert,
                                           na.fail = FALSE)$geometry)]
        })
 
-# Pre-copy data because it takes a long time to clean coords
-lapply(names(dat),
-       function(nam) write.table(dat[[nam]],
-                                 file = here(file.path("data/03_data_clean/tmp",
-                                                       paste0(nam, ".csv"))),
-                                 row.names = FALSE,
-                                 qmethod = "double",
-                                 sep = ",")
-)
-
-ls <- list.files(here("data/03_data_clean/tmp"),
-                 full.names = TRUE)
-nam <- gsub("\\.csv$", "", basename(ls))
-
-dat <- lapply(ls,
-              fread,
-              header = TRUE,
-              na.strings = c("", "NA"),
-              sep = ",")
-names(dat) <- nam
+# # Pre-copy data because it takes a long time to clean coords
+# lapply(names(dat),
+#        function(nam) write.table(dat[[nam]],
+#                                  file = here(file.path("data/03_data_clean/tmp",
+#                                                        paste0(nam, ".csv"))),
+#                                  row.names = FALSE,
+#                                  qmethod = "double",
+#                                  sep = ",")
+# )
+#
+# ls <- list.files(here("data/03_data_clean/tmp"),
+#                  full.names = TRUE)
+# nam <- gsub("\\.csv$", "", basename(ls))
+#
+# dat <- lapply(ls,
+#               fread,
+#               header = TRUE,
+#               na.strings = c("", "NA"),
+#               sep = ",")
+# names(dat) <- nam
 
 # Recode columns ----------------------------------------------------------
 
@@ -312,7 +331,7 @@ lapply(dat, head)
 # Write files ------------------------------------------------------------------
 lapply(names(dat),
        function(nam) write.table(dat[[nam]],
-                                 file = here(file.path("data/03_data_clean",
+                                 file = here(file.path("data/03_data_clean/subset",
                                                        paste0(nam, ".csv"))),
                                  row.names = FALSE,
                                  qmethod = "double",
