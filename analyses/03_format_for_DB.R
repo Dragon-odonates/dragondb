@@ -27,7 +27,7 @@ library(dplyr)
 
 library(dragondb)
 
-read_folder <- here("data/03_data_clean")
+read_folder <- here("data/03_data_clean/subset")
 
 
 # Read data ---------------------------------------------------------------
@@ -41,7 +41,7 @@ dat <- lapply(ls,
               fread,
               header = TRUE,
               na.strings = c("", "NA"),
-              nrows = 15,
+              # nrows = 15,
               sep = ",")
 names(dat) <- nam
 
@@ -111,12 +111,16 @@ dbAppendTable(con, "Recorder", obdf)
 ## Date -----
 cols <- colnames_DB(con, "Date", rm_ID = TRUE)
 
+cols[cols == "date"] <- "eventDate"
+
 dtdf <- lapply(dat, df_all_cols, cols = cols)
 
 dtdf <- do.call("rbind",
                 c(dtdf, fill = TRUE))
 dtdf <- unique(dtdf)
 dtdf <- rm_all_na(dtdf)
+
+setnames(dtdf, old = "eventDate", new = "date")
 
 dbAppendTable(con, "Date", dtdf)
 
