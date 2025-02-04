@@ -140,7 +140,7 @@ lapply(names(dat),
            dat[[n]][, eventDate := as.IDate(eventDate,
                                             format = date_fmt[[n]])
                    ]
-           dat[[n]][, "dateUncertainty"] <- "day"
+           dat[[n]][, dateUncertainty := "day"]
          } else {
            # Determine uncertainty & replace values
            for (i in 1:nrow(dat[[n]])) {
