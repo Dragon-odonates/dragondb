@@ -317,34 +317,38 @@ regions <- ne_states(country = countries$name) |>
   rename(county = name_en)
 regions <- st_make_valid(regions)
 
-
 for (i in seq_along(dat)) {
   pts <- dat[[i]]
   # Add an ID to find back NA coordinates
   pts[, ID := 1:nrow(pts)]
 
   # Convert to sf
-  pts_coord <- na.omit(pts, cols = "decimalCoordinates")
-  pts_coord <- st_as_sf(pts_coord, wkt = "decimalCoordinates")
-  st_crs(pts_coord) <- 4326
+  pts_coord <- pts[decimalCoordinates != "POINT EMPTY"]
 
-  # Get country and county points are in
-  pts_coord <- st_intersection(pts_coord,
-                               countries)
-  pts_countries <- unique(pts_coord$admin)
-  pts_regions <- regions |>
-    filter(admin %in% pts_countries) |>
-    select(-admin)
-  pts_coord <- st_intersection(pts_coord,
-                               pts_regions)
-  pts_coord <- pts_coord |> select(-admin)
+  if (nrow(pts_coord) != 0) { # If some pts have coordinates
+    pts_coord <- st_as_sf(pts_coord, wkt = "decimalCoordinates")
+    st_crs(pts_coord) <- 4326
 
-  # Format data
-  pts_coord <- data.table(pts_coord)
-  pts_coord <- pts_coord[, .(ID, country, county)]
+    # Get country and county points are in
+    pts_coord <- st_intersection(pts_coord,
+                                 countries)
+    pts_countries <- unique(pts_coord$admin)
+    pts_regions <- regions |>
+      filter(admin %in% pts_countries) |>
+      select(-admin)
+    pts_coord <- st_intersection(pts_coord,
+                                 pts_regions)
+    pts_coord <- pts_coord |> select(-admin)
 
-  pts <- pts_coord[pts, on = "ID"]
-  dat[[i]] <- pts[, ID := NULL]
+    # Format data
+    pts_coord <- data.table(pts_coord)
+    pts_coord <- pts_coord[, .(ID, country, county)]
+
+    pts <- pts_coord[pts, on = "ID"]
+    dat[[i]] <- pts[, ID := NULL]
+  }
+  # Else do nothing
+
 }
 
 lapply(dat, head)
