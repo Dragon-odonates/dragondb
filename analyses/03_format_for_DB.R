@@ -75,7 +75,7 @@ spdf <- na.omit(spdf)
 
 dbAppendTable(con, "Taxon", spdf)
 
-## Observer -----
+## Recorder -----
 cols <- c("recordedBy", "recordedByID")
 
 obdf <- lapply(dat, df_all_cols, cols = cols)
@@ -125,15 +125,27 @@ setnames(dtdf, old = "eventDate", new = "date")
 dbAppendTable(con, "Date", dtdf)
 
 ## Parent dataset -----
-padf <- data.table(parentDatasetName = c("Belgium2",
-                                         "France_OPIE"))
+datinfo <- data.table(read_excel(here("data/metadata/metadata.xlsx"),
+                                 sheet = 1))
+
+# Get parent datasets
+padf <- datinfo[isParentDataset == TRUE, ]
+
+# Get parent datasets in data
+padf <- padf[datasetName %in% names(dat), ]
+
+# Get only relevant columns
+cols <- colnames_DB(con, "ParentDataset", rm_ID = FALSE)
+setnames(padf,
+         old = c("datasetID", "datasetName"),
+         new = cols)
+padf <- df_all_cols(padf, cols)
 
 dbAppendTable(con, "ParentDataset", padf)
 
 ## Dataset -----
-cols <- colnames_DB(con, "Dataset", rm_ID = TRUE)
-
-dadf <- lapply(dat, df_all_cols, cols = cols)
+dadf <- lapply(dat, df_all_cols,
+               cols = c("datasetName", "parentDataset"))
 dadf <- lapply(dadf, unique)
 dadf <- lapply(dadf, as.data.table)
 
@@ -142,168 +154,125 @@ padf_db <- dbGetQuery(con, 'SELECT *
                     FROM "ParentDataset";')
 padf_db <- data.table(padf_db)
 
-dadf <- lapply(seq_along(dadf),
-               function(i) {
-                 datname <- names(dadf)[i]
-                 df <- dadf[[i]]
+# Set dataset names :
+# We set names only for list elements that are not parent
+# (because parents already have a dataset name)
+ind_nopar <- which(!(names(dadf) %in% padf_db$parentDatasetName))
+lapply(ind_nopar,
+       function(i) dadf[[i]][, datasetName := names(dadf)[i] ])
 
-                 df[, parentDataset := as.numeric(parentDataset)]
-
-                 if (all(is.na(df$datasetName)) ) { # There is no dataset name
-                   df[, datasetName := datname] # use list names
-                 } else { # There are sub-datasets -> add parent dataset
-                   parent_ID <- padf_db[parentDatasetName == datname,
-                                        parentDatasetID]
-                   df[, parentDataset := parent_ID]
-                 }
-               })
+# Set parent datasets:
+# We do that only for list elements that are parents (the others don't
+# have parents)
+ind_par <- which(names(dadf) %in% padf_db$parentDatasetName)
+lapply(ind_par,
+       function(i) {
+         id <- padf_db[parentDatasetName == names(dadf)[i],
+                       parentDatasetID]
+         dadf[[i]][, parentDataset :=  as.character(parentDataset)]
+         dadf[[i]][, parentDataset :=  id]
+       })
 
 dadf <- do.call("rbind",
                 dadf)
 
-# Add sampling protocol
-datinfo <- data.table(read_excel(
-  here("data/metadata/02_modified/Datasets_review.xlsx")))
+# Add dataset info at dataset level
+cols <- colnames_DB(con, "Dataset")
 
-# Add parent datasets IDs
-pa_in_dat <- padf_db[parentDatasetID %in% unique(dadf$parentDataset),]
-datinfo <- pa_in_dat[datinfo,
-                     on = "parentDatasetName"]
+datmerge <- datinfo[, c("datasetID", "datasetName", "samplingProtocol",
+                        "description")]
 
-# Complete sampling info
-dadf[, samplingProtocol := as.character(samplingProtocol)]
+dadf <- datmerge[dadf,
+                 on = "datasetName"]
 
-for (i in 1:nrow(dadf)) {
-  ds <- dadf[i, datasetName]
+# Generate missing datasets IDs
+parNA <- dadf[is.na(datasetID), parentDataset] # get parents datasets for datasets
+# with no ID
 
-  # TO FIX LATER
-  if (ds == "Cyprus2") {
-    ds <- "Cyprus1"
+if(any(is.na(parNA))) {
+  warning("There are IDless datasets with no parent.")
+}
+
+# Generate children datasets on the model parent's first letter + X + number
+did <- paste0(str_sub(parNA, 1, 1), "X")
+did <- tapply(did, INDEX = did,
+              function(d) {
+                sq <- seq(1, length(d))
+                str_pad(sq, 2, pad = "0")
+              })
+
+did <- lapply(seq_along(did),
+              function(i) paste0(names(did)[i], did[[i]]))
+
+did <- unlist(did)
+
+dadf[is.na(datasetID), datasetID := did]
+
+
+# Replace empty info (sampling, description) for some datasets with parents"
+ind_par <- which(!is.na(dadf$parentDataset)) # get indexs of datasets to check
+
+for (i in ind_par) {
+  par <- dadf[i, parentDataset] # get parent's ID
+  if (is.na(dadf[i, samplingProtocol])) { # protocol is empty
+    # Replace with parent's
+    par_sp <- datinfo[datasetID == par, samplingProtocol]
+    dadf[i, samplingProtocol := par_sp]
   }
 
-  if (!is.null(ds)) {
-    dii <- datinfo_ds[datasetName == ds,]
-
-    # TO FIX LATER
-    if (ds == "Belgium1") {
-      dii <- dii[1, ]
-    }
-  } else {
-    dii <- data.frame()
-  }
-
-  if (nrow(dii) != 0) { # Case dataset has a sampling protocol
-    dadf[i, samplingProtocol := dii$samplingProtocol]
-  } else { # dataset doesn't have a sampling protocol: use parent
-    pds <- dadf[i, parentDataset]
-    dii <- datinfo[parentDatasetID == pds,]
-
-    if (nrow(dii) == 0) {
-      warning("No sampling found for dataset ", ds)
-    }
-    dadf[i, samplingProtocol := dii$samplingProtocol]
+  if (is.na(dadf[i, description])) { # description is empty
+    # Replace with parent's
+    par_de <- datinfo[datasetID == par, description]
+    dadf[i, description := par_de]
   }
 }
 
 dbAppendTable(con, "Dataset", dadf)
 
 ## Contact -----
-cols <- colnames_DB(con, "Contact", rm_ID = TRUE)
+cols <- colnames_DB(con, "Contact", rm_ID = FALSE)
 
-contacts_df <- data.table(read_excel(here("data/metadata/01_raw/contacts.xlsx"),
-                                     sheet = 1))
+contacts_df <- data.table(read_excel(here("data/metadata/metadata.xlsx"),
+                                     sheet = 2))
+contacts_datasets <- data.table(read_excel(here("data/metadata/metadata.xlsx"),
+                                           sheet = 3))
 
-contacts_df$ID <- 1:nrow(contacts_df)
-
-# Separate datasets ---
-# Separate names
-split <- lapply(contacts_df$datasetName, str_split, pattern = ", ")
-split <- lapply(split, unlist)
-
-# Format to df
-split <- data.table(do.call("rbind", split))
-split[, ID := contacts_df$ID]
-# Wide to long
-split <- melt(split, id.vars = "ID",
-              value.name = "datasetName")
-split[, variable := NULL]
-split <- split[!is.na(datasetName), ] # remove empty values
-split <- unique(split) # remove duplicates introduced by rbind
-
-contacts_df[, datasetName := NULL] # rm datasetNames
-
-contacts_df <- split[contacts_df, on = "ID"] # merge to get duplicated contacts
-
-# Get only contacts in DB
+# Get only contacts for datasets in DB ---
 padf_db <- dbGetQuery(con, 'SELECT * FROM "ParentDataset";')
 padf_db <- data.table(padf_db)
 dadf_db <- dbGetQuery(con, 'SELECT * FROM "Dataset";')
 dadf_db <- data.table(dadf_db)
 
-contacts_df <- contacts_df[(datasetName %in% dadf_db$datasetName) |
-                           (parentDatasetName %in% padf_db$parentDatasetName),]
+co_db <- contacts_datasets[(datasetID %in% c(padf_db$parentDatasetID, dadf_db$datasetID)), ]
+contacts_df <- contacts_df[contactID %in% co_db$contactID, ]
 
 codf <- df_all_cols(contacts_df, cols = cols)
-
-codf <- unique(codf)
 
 dbAppendTable(con, "Contact", codf)
 
 
 ## DatasetContact -----
-
-# Get datasets in DB
-dadf_db <- data.table(dbGetQuery(con, 'SELECT "datasetID", "datasetName"
-                                 FROM "Dataset";'))
-
-# Add dataset ID to contacts table
-cols <- c("datasetID", "datasetName",
-          "contactName", "contactEmail")
-dcdf <- contacts_df[dadf_db,
-                on = "datasetName", ..cols]
-
-# Add contacts ID to contacts
-codf_db <- data.table(dbGetQuery(con, 'SELECT "contactID", "contactName", "contactEmail"
-                                 FROM "Contact";'))
-
-dcdf <- codf_db[dcdf,
-                on = c("contactName", "contactEmail")]
-dcdf <- na.omit(dcdf, cols = "contactID") # some datasets have no contact
-
-# Insert in table
-dcdf <- dcdf[, .(datasetID, contactID)]
+dcdf <- contacts_datasets[datasetID %in% dadf_db$datasetID, ]
 
 setnames(dcdf,
          old = c("datasetID", "contactID"),
          new = c("dataset", "contact"))
+cols <- colnames_DB(con, "DatasetContact", rm_ID = FALSE)
+dcdf <- df_all_cols(dcdf, cols = cols)
 
 dbAppendTable(con, "DatasetContact", dcdf)
 
 ## ParentDatasetContact -----
+pcdf <- contacts_datasets[datasetID %in% padf_db$parentDatasetID, ]
 
-# Get parent datasets in DB
-pddf_db <- data.table(dbGetQuery(con, 'SELECT "parentDatasetID", "parentDatasetName"
-                                 FROM "ParentDataset";'))
-
-# Add parents dataset ID to contacts
-cols <- c("parentDatasetID", "parentDatasetName",
-          "contactName", "contactEmail")
-dcdf <- contacts_df[pddf_db,
-                    on = "parentDatasetName", ..cols]
-
-# Add contacts ID to contacts
-dcdf <- codf_db[dcdf,
-                on = c("contactName", "contactEmail")]
-dcdf <- na.omit(dcdf, cols = "contactID") # some parent datasets have no contact
-
-# Insert in table
-dcdf <- dcdf[, .(parentDatasetID, contactID)]
-
-setnames(dcdf,
-         old = c("parentDatasetID", "contactID"),
+setnames(pcdf,
+         old = c("datasetID", "contactID"),
          new = c("parentDataset", "contact"))
+cols <- colnames_DB(con, "ParentDatasetContact", rm_ID = FALSE)
+pcdf <- df_all_cols(pcdf, cols = cols)
 
-dbAppendTable(con, "ParentDatasetContact", dcdf)
+dbAppendTable(con, "ParentDatasetContact", pcdf)
+
 
 ## Location -----
 cols <- colnames_DB(con, "Location", rm_ID = TRUE)

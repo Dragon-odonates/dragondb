@@ -38,21 +38,21 @@ CREATE TABLE "Date"(
   );
 
 CREATE TABLE "ParentDataset"(
-  "parentDatasetID" SERIAL PRIMARY KEY NOT NULL,
+  "parentDatasetID" VARCHAR(4) PRIMARY KEY NOT NULL,
   "parentDatasetName" VARCHAR(20) UNIQUE
 );
 
 CREATE TABLE "Dataset"(
-  "datasetID" SERIAL PRIMARY KEY NOT NULL,
-  "datasetName" VARCHAR(80) UNIQUE,
+  "datasetID" VARCHAR(4) PRIMARY KEY NOT NULL,
+  "datasetName" VARCHAR(200) UNIQUE,
   "samplingProtocol" VARCHAR(20) CHECK ("samplingProtocol" IN ('transect',
                                         'opportunistic', 'site counts')),
   "description" VARCHAR(200),
-  "parentDataset" INT REFERENCES "ParentDataset"("parentDatasetID")
+  "parentDataset" VARCHAR(4) REFERENCES "ParentDataset"("parentDatasetID")
 );
 
 CREATE TABLE "Contact"(
-  "contactID" SERIAL PRIMARY KEY NOT NULL,
+  "contactID" INT PRIMARY KEY NOT NULL,
   "contactName" VARCHAR(100),
   "organisation" VARCHAR(100),
   "contactEmail" VARCHAR(100),
@@ -60,13 +60,13 @@ CREATE TABLE "Contact"(
 );
 
 CREATE TABLE "DatasetContact"(
-  "dataset" INT REFERENCES "Dataset"("datasetID"),
+  "dataset" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
   "contact" INT REFERENCES "Contact"("contactID"),
   PRIMARY KEY ("dataset", "contact")
 );
 
 CREATE TABLE "ParentDatasetContact"(
-  "parentDataset" INT REFERENCES "ParentDataset"("parentDatasetID"),
+  "parentDataset" VARCHAR(4) REFERENCES "ParentDataset"("parentDatasetID"),
   "contact" INT REFERENCES "Contact"("contactID"),
   PRIMARY KEY ("parentDataset", "contact")
 );
@@ -88,7 +88,7 @@ CREATE TABLE "Event"(
   "location" INT REFERENCES "Location"("locationID"),
   "date" INT REFERENCES "Date"("dateID"),
   "recorder" INT REFERENCES "Recorder"("recorderID"),
-  "dataset" INT REFERENCES "Dataset"("datasetID"),
+  "dataset" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
   "samplingEffort" NUMERIC,
   "wind" VARCHAR(50),
   "cloudCover" VARCHAR(50),
