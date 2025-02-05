@@ -18,7 +18,7 @@ library(here)
 library(dragondb)
 
 read_folder <- here("data/01_data_raw")
-read_folder_meta <- here("data/metadata/01_raw")
+read_folder_meta <- here("data/metadata")
 
 # Read data ---------------------------------------------------------------
 
@@ -100,8 +100,7 @@ dat[["Netherlands"]] <- merge(dat[["Netherlands"]], sp_ned,
 dat[["France_STELI"]] <- fread(file.path(read_folder,
                                          "STELI_data_FR_DMS.csv"))
 
-dat[["France_OPIE"]] <- fread(file.path(read_folder,
-                                        "France Opportunistics data (Opie)/odonata_202410091558.csv"))
+dat[["France_Atlas"]] <- fread(file.path(read_folder, "odonata_202410091558.csv"))
 
 # Standardize column names ------------------------------------------------
 
