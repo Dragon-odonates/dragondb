@@ -30,6 +30,34 @@ library(dragondb)
 read_folder <- here("data/03_data_clean/subset")
 
 
+# Replace all NA values with "__NA__"
+
+#' Replace `NA` values
+#'
+#' Replace `NA` values in a data.table with a placeholder
+#'
+#' @param dt the data.table
+#' @param SDcols the columns in which to replace values
+#' @param placeholder the placeholder
+#' @param rev reverse (i.e. replace placeholder back with `NA`).
+#'
+#' @returns the data.table where NA values are replaced with `placeholder`
+#' (or the reverse if `rev` is `TRUE`)
+#' @export
+replace_NA <- function(dt, SDcols, placeholder = "__NA__", rev = FALSE) {
+
+  if (!rev) {
+    dt[, (names(.SD)) := lapply(.SD,
+                                function(x) fifelse(is.na(x), placeholder, x)),
+       .SDcols = SDcols]
+  } else {
+    dt[, (names(.SD)) := lapply(.SD,
+                                function(x) fifelse(x == placeholder, NA, x)),
+       .SDcols = SDcols]
+  }
+
+}
+
 # Read data ---------------------------------------------------------------
 
 ls <- list.files(read_folder,
@@ -109,18 +137,21 @@ dbAppendTable(con, "Recorder", obdf)
 
 
 ## Date -----
-cols <- colnames_DB(con, "Date", rm_ID = TRUE)
+# cols <- colnames_DB(con, "Date", rm_ID = TRUE)
 
-cols[cols == "date"] <- "eventDate"
+cols <- c("eventDate", "eventTime", "eventDateUncertainty")
 
 dtdf <- lapply(dat, df_all_cols, cols = cols)
+dtdf <- lapply(dtdf, function(d) d[, eventTime := as.ITime(eventTime)])
 
 dtdf <- do.call("rbind",
                 c(dtdf, fill = TRUE))
 dtdf <- unique(dtdf)
 dtdf <- rm_all_na(dtdf)
 
-setnames(dtdf, old = "eventDate", new = "date")
+setnames(dtdf,
+         old = c("eventDate", "eventTime", "eventDateUncertainty"),
+         new = c("date", "time", "dateUncertainty"))
 
 dbAppendTable(con, "Date", dtdf)
 
@@ -250,7 +281,6 @@ codf <- df_all_cols(contacts_df, cols = cols)
 
 dbAppendTable(con, "Contact", codf)
 
-
 ## DatasetContact -----
 dcdf <- contacts_datasets[datasetID %in% dadf_db$datasetID, ]
 
@@ -276,89 +306,275 @@ dbAppendTable(con, "ParentDatasetContact", pcdf)
 
 ## Location -----
 cols <- colnames_DB(con, "Location", rm_ID = TRUE)
+cols <- cols[!(cols %in% c("county", "country"))] # Remove computed values
 
 lodf <- lapply(dat, df_all_cols, cols = cols)
 
-# Get Natural Earth data
-countries <- ne_countries(continent = "Europe") |>
+# Get Natural Earth contries
+countries <- ne_countries(continent = c("Europe", "Asia")) |>
   select(name_long, admin) |>
   rename(country = name_long)
 countries <- st_make_valid(countries)
 
-regions <- ne_states(country = countries$name) |>
-  select(name_en, admin) |>
-  rename(county = name_en)
-regions <- st_make_valid(regions)
 
-for (i in seq_along(dat)) {
-  pts <- dat[[i]]
+for (i in seq_along(lodf)) {
+  dati <- lodf[[i]]
   # Add an ID to find back NA coordinates
-  pts[, ID := 1:nrow(pts)]
+  dati[, ID := 1:nrow(dati)]
 
   # Convert to sf
-  pts_coord <- pts[decimalCoordinates != "POINT EMPTY"]
+  pts_coord <- dati[decimalCoordinates != "POINT EMPTY",]
 
-  if (nrow(pts_coord) != 0) { # If some pts have coordinates
+  if (nrow(pts_coord) != 0) { # If some data have coordinates
     pts_coord <- st_as_sf(pts_coord, wkt = "decimalCoordinates")
     st_crs(pts_coord) <- 4326
 
     # Get country and county points are in
-    pts_coord <- st_intersection(pts_coord,
-                                 countries)
-    pts_countries <- unique(pts_coord$admin)
-    pts_regions <- regions |>
-      filter(admin %in% pts_countries) |>
-      select(-admin)
-    pts_coord <- st_intersection(pts_coord,
-                                 pts_regions)
-    pts_coord <- pts_coord |> select(-admin)
+    country_inter <- st_intersects(pts_coord, countries)
+
+    pb_countries <- which(sapply(country_inter, length) != 1)
+    if (length(pb_countries) != 0) {
+      warning("Some points belong to non-unique countries")
+      country_inter[pb_countries] <- NA
+    }
+    country_inter <- unlist(country_inter)
+    country_inter <- countries[country_inter, ]$admin
+
+    pts_coord$country <- country_inter
+
+    # Get unique countries
+    ucountries <- unique(pts_coord$country)
+
+    # Get regions for this country
+    regions_i <- ne_states(country = ucountries) |>
+      select(name_en, admin) |>
+      rename(county = name_en)
+    regions_i <- st_make_valid(regions_i)
+
+    region_inter <- st_intersects(pts_coord, regions_i)
+
+    pb_regions <- which(sapply(region_inter, length) != 1)
+    if (length(pb_regions) != 0) {
+      warning("Some points belong to non-unique regions")
+      region_inter[pb_regions] <- NA
+    }
+
+    region_inter <- unlist(region_inter)
+    region_inter <- regions_i[region_inter, ]$county
+
+    pts_coord$county <- region_inter
 
     # Format data
-    pts_coord <- data.table(pts_coord)
-    pts_coord <- pts_coord[, .(ID, country, county)]
-
-    pts <- pts_coord[pts, on = "ID"]
-    dat[[i]] <- pts[, ID := NULL]
+    pts_coord <- data.table(pts_coord) # convert to datatable again
+    pts_coord <- pts_coord[, .(country, county, ID)] # get relevant data for merge
+    dati <- pts_coord[dati, on = "ID"] # merge data for which country/county
+    # have been retrieved
+  } else { # There are no coordinates in the dataset
+    dati[, c("country", "county") := NA] # Set computed values to NA
   }
-  # Else do nothing
+  # Remove temporary ID
+  dati[, ID := NULL]
+
+  # Set list element
+  lodf[[i]] <- dati
 
 }
 
-lapply(dat, head)
-lapply(dat, function(d) any(is.na(d$country)))
-
-# library(ggplot2)
+# # Sanity check
+# lapply(dat, function(d) head(d[, .(decimalCoordinates,
+#                                    country,
+#                                    county)]))
+#
+# # library(ggplot2)
+#
+# pts <- lapply(dat, function(d) d[, .(decimalCoordinates, country)])
+# pts <- do.call("rbind", pts)
+# pts <- st_as_sf(pts, wkt = "decimalCoordinates")
+# st_crs(pts) <- 4326
+#
+# bbox <- st_bbox(pts)
 # ggplot() +
 #   geom_sf(data = countries, fill = "grey75") +
-#   geom_sf(data = pts) +
-#   xlim(-20, 40) + ylim(30, 70)
+#   geom_sf(data = pts, aes(col = country)) +
+#   xlim(bbox["xmin"], bbox["xmax"]) +
+#   ylim(bbox["ymin"], bbox["ymax"])
 
 
-# Format data -------------------------------------------------------------
+lodf <- do.call("rbind", lodf)
 
-# Add country
-countries <- c("Austria",
-               "Belgium",
-               "Belgium",
-               "Cyprus",
-               "Cyprus",
-               "Netherlands",
-               "France",
-               "France")
-names(countries) <- names(dat)
+lodfu <- unique(lodf)
+
+# For the moment this removes data with only county or country
+# To amend after (problem is some Cyprus data don't have coordinates)
+lodfu <- lodfu[decimalCoordinates != "POINT EMPTY",]
+
+dbAppendTable(con, "Location", lodfu)
 
 
-## parentDataset ------------------------------------------------------
+## Event -----
+cols <- colnames_DB(con, "Event", rm_ID = TRUE)
+
+cols <- cols[!(cols %in% c("location", "date", "recorder", "dataset"))]
+cols <- c("decimalCoordinates", "eventDate", "eventTime", "eventDateUncertainty",
+          "recordedBy", "recordedByID",
+          "datasetName",
+          cols)
+
+evdf <- lapply(dat, df_all_cols, cols = cols)
+
+# Need to get locationID, dateID, recorderID, datasetID
+
+# get locationID ---
+loc_db <- dbGetQuery(con, 'SELECT "locationID",
+                    ST_AsText("decimalCoordinates") AS "decimalCoordinates"
+                    FROM "Location";')
+loc_db <- st_as_sf(loc_db, wkt = "decimalCoordinates")
+
+evdf <- lapply(evdf,
+               function(d) st_as_sf(d, wkt = "decimalCoordinates"))
+
+evdf <- lapply(evdf,
+               function(d) data.table(st_drop_geometry(d |> st_join(loc_db))))
 
 
+# Check IDs were retrieved
+lapply(evdf, function(d) !any(is.na(d$locationID)))
+# All good except Cyprus that has NA coord
 
-# Not sure for Belgium1/2 data and Austria
-dat_info[, samplingProtocol := c("transect",
-                                 "opportunistic",
-                                 "opportunistic",
-                                 "opportunistic",
-                                 "opportunistic",
-                                 "site counts",
-                                 "site counts",
-                                 "opportunistic",
-                                 "opportunistic")]
+# get dateID ---
+dat_db <- dbGetQuery(con, 'SELECT "dateID", "date", "time", "dateUncertainty"
+                    FROM "Date";')
+dat_db <- data.table(dat_db)
+
+dbcols <- c("date", "time", "dateUncertainty")
+dfcols <- c("eventDate", "eventTime", "eventDateUncertainty")
+
+# Convert to character to prepare for placeholder
+dat_db[, names(.SD) := lapply(.SD, as.character),
+       .SDcols = dbcols]
+
+lapply(evdf,
+       function(e) {
+         e[, names(.SD) := lapply(.SD, as.character),
+             .SDcols = dfcols]
+       })
+
+# Replace NAs
+lapply(evdf, replace_NA, SDcols = dfcols)
+replace_NA(dat_db,
+           SDcols = dbcols)
+
+
+evdf <- lapply(evdf,
+               function(e) {
+                 dat_db[e,
+                        on = c("date" = "eventDate",
+                               "time" = "eventTime",
+                               "dateUncertainty" = "eventDateUncertainty")]
+                 })
+
+lapply(evdf, replace_NA,
+       SDcols =  dbcols,
+       rev = TRUE)
+
+# Check IDs are here
+lapply(evdf, function(d) !any(is.na(d$dateID)))
+# Ok except Cyprus1 again
+
+# get recorderID
+rec_db <- dbGetQuery(con, 'SELECT "recorderID", "recorderID_orig", "name"
+                     FROM "Recorder";')
+rec_db <- data.table(rec_db)
+
+dbcols <- c("recorderID_orig", "name")
+dfcols <- c("recordedBy", "recordedByID")
+
+# Convert to character to prepare for placeholder
+rec_db[, names(.SD) := lapply(.SD, as.character),
+       .SDcols = dbcols]
+
+lapply(evdf,
+       function(e) {
+         e[, names(.SD) := lapply(.SD, as.character),
+           .SDcols = dfcols]
+       })
+
+# Replace NAs
+lapply(evdf, replace_NA, SDcols = dfcols)
+replace_NA(rec_db,
+           SDcols = dbcols)
+
+
+evdf <- lapply(evdf,
+               function(e) {
+                 rec_db[e,
+                        on = c(name = "recordedBy",
+                               recorderID_orig = "recordedByID")]
+               })
+
+lapply(evdf, replace_NA,
+       SDcols = dbcols,
+       rev = TRUE)
+
+# Check IDs are here
+lapply(evdf, function(d) !any(is.na(d$recorderID)))
+
+# We use padf_db and dadf_db computed above for dataset insertion
+
+# Get list elements that are not parent and add their dataset ID
+ind_nopar <- which(!(names(evdf) %in% padf_db$parentDatasetName))
+
+lapply(ind_nopar,
+       function(i) {
+         ds_name <- names(evdf)[i]
+         evdf[[i]][, datasetID := dadf_db[datasetName == ds_name, datasetID]]
+       })
+
+# Get list elements that are parent and add their parent dataset ID
+# and datasetID
+ind_par <- which(names(evdf) %in% padf_db$parentDatasetName)
+lapply(ind_par,
+       function(i) {
+         # Add parent
+         ps_name <- names(evdf)[i]
+         evdf[[i]][, parentDatasetID := padf_db[parentDatasetName == ps_name, parentDatasetID]]
+         # Add dataset
+         ds_id <- lapply(1:nrow(evdf[[i]]),
+                         function(k) {
+                           nam <- evdf[[i]][k, datasetName]
+                           dadf_db[datasetName == nam, datasetID]
+                         })
+         ds_id <- unlist(ds_id)
+         evdf[[i]][, datasetID := ds_id]
+       })
+
+
+# Check IDs are here
+lapply(evdf, function(d) !any(is.na(d$datASETid)))
+# All IDs have been found
+
+lapply(evdf,
+       setnames,
+       old = c("locationID", "dateID", "recorderID", "datasetID"),
+       new = c("location", "date", "recorder", "dataset"))
+
+cols <- colnames_DB(con, "Event", rm_ID = TRUE)
+
+evdf <- lapply(evdf, df_all_cols, cols = cols)
+
+evdf_df <- data.table(do.call("rbind", evdf))
+
+evdf_dfu <- unique(evdf_df)
+
+dbAppendTable(con, "Event", evdf_dfu)
+
+## Occurrence -----
+cols <- colnames_DB(con, "Occurrence", rm_ID = TRUE)
+
+cols <- cols[!(cols %in% c("location", "date", "recorder", "dataset"))]
+cols <- c("decimalCoordinates", "eventDate", "eventTime", "eventDateUncertainty",
+          "recordedBy", "recordedByID",
+          "datasetName",
+          cols)
+
+# Need to get ID for event, taxon, location, date

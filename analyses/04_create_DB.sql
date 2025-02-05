@@ -79,8 +79,9 @@ CREATE TABLE "Location"(
   "municipality" VARCHAR(100),
   "county" VARCHAR(100),
   "country" VARCHAR(50)
-  CONSTRAINT complete_loc CHECK ("decimalCoordinates" IS NULL OR
-                                 ("county" IS NOT NULL AND "county" IS NOT NULL))
+  CONSTRAINT complete_loc CHECK ("decimalCoordinates" IS NOT NULL OR
+                                 "county" IS NOT NULL OR "county" IS NOT NULL)
+  CONSTRAINT orphan_county CHECK ("county" IS NOT NULL OR "county" IS  NULL)
 );
 
 CREATE TABLE "Event"(
