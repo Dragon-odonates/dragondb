@@ -34,7 +34,7 @@ nam <- gsub("\\.csv$", "", basename(ls))
 dat <- lapply(ls,
               fread,
               header = TRUE,
-              nrows = 100,
+              nrows = 300,
               na.strings = c("", "NA"),
               sep = ",")
 names(dat) <- nam
@@ -93,6 +93,16 @@ lapply(names_list,
        function(n) unique(n$matchType))
 
 lapply(names_list,
+       function(n) unique(n$rank))
+
+lapply(names_list,
+       function(n) n[n$matchType == "SUBSPECIES",])
+# tst <- names_list$France_STELI
+# tst |>
+#   filter(species == "Calopteryx virgo") |>
+#   select(scientificName, species, speciesKey)
+
+lapply(names_list,
        function(n) n[n$matchType == "HIGHERRANK",])
 lapply(names_list,
        function(n) n[n$matchType == "NONE" |
@@ -107,8 +117,9 @@ names_merge <- lapply(names_list,
                                                    "genus",
                                                    "family",
                                                    "rank",
+                                                   "species",
+                                                   "speciesKey",
                                                    "usageKey")]))
-
 dat <- lapply(seq_along(dat),
               function(i) {
                 names_merge[[i]][dat[[i]],
@@ -117,8 +128,18 @@ dat <- lapply(seq_along(dat),
 names(dat) <- names(names_merge)
 
 lapply(dat, setnames,
-       old = c("canonicalName", "verbatim_name", "rank", "usageKey"),
-       new = c("scientificName", "verbatimName", "taxonRank", "taxonID"))
+       old = c("canonicalName", "verbatim_name", "rank", "usageKey", "speciesKey"),
+       new = c("scientificName", "verbatimName", "taxonRank", "taxonID", "speciesID"))
+
+
+# tst <- copy(dat$France_STELI)
+# tst |>
+#     filter(species == "Calopteryx virgo") |>
+#     select(scientificName, species, taxonID, speciesID, taxonRank)
+# tst |>
+#   filter(taxonRank != "SPECIES") |>
+#   select(scientificName, species, taxonID, speciesID, taxonRank)
+
 
 ## Date -----
 date_fmt <- vector(mode = "list", length = length(dat))
@@ -327,6 +348,41 @@ for (nam in dat_recode_names) {
 }
 
 lapply(dat, head)
+
+## eventType -----
+
+lapply(dat, function(d) unique(d$eventType))
+
+# Correct data for Belgium2 and Cyprus1
+
+# For Belgium2 not yet with our data
+# type_orig <- unique(dat$Belgium2$eventType)
+#
+# type_new <- c("transect", "site_counts")
+
+type_orig <- unique(dat$Cyprus1$eventType)
+type_new <- c("museum_specimen")
+names(type_new) <- type_orig
+
+dat$Cyprus1[, eventType := unname(type_new[eventType])]
+
+# For other datasets: use info
+datinfo <- data.table(read_excel(here("data/metadata/metadata.xlsx"),
+                                 sheet = 1))
+
+# Get dataset-sampling key
+dat_protocol <- datinfo$samplingProtocol
+names(dat_protocol) <- datinfo$datasetName
+
+# Get data to increment
+ind_auto <- which(!(names(dat) %in% c("Belgium2", "Cyprus1")))
+lapply(ind_auto,
+       function(i) {
+         nam <- names(dat)[i]
+         dat[[i]][, eventType := dat_protocol[nam]]
+       })
+
+lapply(dat, function(d) unique(d$eventType))
 
 # Write files ------------------------------------------------------------------
 lapply(names(dat),
