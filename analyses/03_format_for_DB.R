@@ -284,6 +284,24 @@ cols <- cols[!(cols %in% c("county", "country"))] # Remove computed values
 
 lodf <- lapply(dat, df_all_cols, cols = cols)
 
+# Add parent sites
+# IDs of datasets that have parents
+names_par <- names(which(sapply(dat, function(d) !all(is.na(d$parentCoordinates)))))
+
+par_loc <- copy(dat[names_par])
+
+par_loc <- lapply(par_loc,
+                  function(d) {
+                    res <- unique(d[, .(parentCoordinates)])
+                    setnames(res,
+                             old = "parentCoordinates",
+                             new = "decimalCoordinates")
+                  })
+
+for (n in names_par) {
+  lodf[[n]] <-  rbind(par_loc[[n]], lodf[[n]], fill = TRUE)
+}
+
 # Get Natural earth countries/counties
 geo <- ne_download(scale = 10, type = "states")
 geo <- geo[, c("admin", "name_en")]
@@ -403,29 +421,100 @@ dbAppendTable(con, "Location", lodfu)
 cols <- colnames_DB(con, "Event", rm_ID = TRUE)
 
 # Remove columns that we will get from joins
-cols <- cols[!(cols %in% c("location", "eventDate", "recorder", "dataset"))]
+cols <- cols[!(cols %in% c("location", "eventDate",
+                           "recorder", "dataset", "parentEvent"))]
 # Add columns necessary for joins
 cols <- c("decimalCoordinates", "eventDate", "eventTime", "eventDateUncertainty",
           "recordedBy", "recordedByID",
-          "datasetID",
+          "datasetID", "parentCoordinates",
           cols)
 
 evdf <- lapply(dat, df_all_cols, cols = cols)
 
-# Need to get locationID, dateID, recorderID, datasetID
+# Need to get locationID, dateID, recorderID, datasetID and parentEvent (ID)
+
+# get parentEvent ---
+
+# IDs of datasets that have parents
+names_par <- names(which(sapply(evdf, function(d) !all(is.na(d$parentCoordinates)))))
+
+# Add parent events and isParent
+evdf <- lapply(names(evdf),
+               function(n) {
+                 if (n %in% names_par) { # if this dataset has parent events
+                   # Add the coordinates of parents as standalone events
+                   res <- unique(evdf[[n]][, .(parentCoordinates, datasetID)])
+                   res[, isParentEvent := TRUE] # set isParent to TRUE for parents
+                   evdf[[n]][, isParentEvent := FALSE] # FALSE for others
+                   setnames(res,
+                            old = "parentCoordinates",
+                            new = "decimalCoordinates")
+                   rbind(res, evdf[[n]], fill = TRUE)
+                   } else {
+                     evdf[[n]][, isParentEvent := FALSE] # All these events have no parent
+                   }
+                 })
+names(evdf) <- names(dat)
 
 # get locationID ---
 loc_db <- dbGetQuery(con, 'SELECT "locationID",
                     ST_AsText("decimalCoordinates") AS "decimalCoordinates"
                     FROM "Location";')
 loc_db <- st_as_sf(loc_db, wkt = "decimalCoordinates")
+st_crs(loc_db) <- 4326
+loc_db <- st_make_valid(loc_db) # IMPORTANT else does not compare geometries well
 
-evdf <- lapply(evdf,
-               function(d) st_as_sf(d, wkt = "decimalCoordinates"))
+evdf <- lapply(names(evdf),
+               function(n) {
+                 print(paste(n, "------------"))
+                 # In all cases: add location ID for event
+                 res <- st_as_sf(evdf[[n]], wkt = "decimalCoordinates")
+                 st_crs(res) <- 4326
+                 res <- st_make_valid(res)
 
-evdf <- lapply(evdf,
-               function(d) data.table(st_drop_geometry(d |> st_join(loc_db))))
+                 res <- data.table(st_drop_geometry(res |>
+                                                      st_join(loc_db,
+                                                              join = st_equals)))
 
+                 setnames(res,
+                          old = "locationID", new = "eventLocationID")
+
+                 if ( any(is.na(res$eventLocationID)) ) {
+                   warning("There are NA locations IDs in dataset ", n, " :(")
+                 }
+
+                 if (n %in% names_par) { # Also add location for parent
+                   par <- res[!is.na(parentCoordinates), ] # sites that have parent events
+                   par <- st_as_sf(par, wkt = "parentCoordinates")
+                   st_crs(par) <- 4326
+                   par <- st_make_valid(par)
+
+                   par <- data.table(st_drop_geometry(par |>
+                                                        st_join(loc_db,
+                                                                join = st_equals)))
+                   setnames(par,
+                            old = "locationID",
+                            new = "parentLocationID")
+                   par <- unique(par[, .(eventLocationID, parentLocationID)])
+
+                   if ( any(is.na(par$parentLocationID)) ) {
+                     warning("There are NA parent locations IDs in dataset ", n, " :(")
+                   }
+
+                   # Join those sites that have a parent based on locationID
+                   res <- par[res, on = "eventLocationID"]
+
+                   if ( any(is.na(res$eventLocationID)) ) {
+                     warning("There are NA locations IDs in dataset ", n, " :(")
+                   }
+
+                 }  else {
+                   res[, parentLocationID := NA]
+                 }
+
+                 return(res)
+               })
+names(evdf) <- names(dat)
 
 # Check IDs were retrieved
 lapply(evdf, function(d) !any(is.na(d$locationID)))
@@ -468,7 +557,9 @@ lapply(evdf, replace_NA,
 
 # Check IDs are here
 lapply(evdf, function(d) !any(is.na(d$eventDateID)))
-# Ok except Cyprus1 again
+# Ok except Cyprus1 again (and STELI which is expected for parentLocations)
+!any(is.na(evdf$France_STELI[isParentEvent == FALSE, eventDateID]))
+# When we remove parents from STELI all good
 
 # get recorderID
 rec_db <- dbGetQuery(con, 'SELECT "recorderID", "recorderID_orig", "name"
@@ -506,7 +597,7 @@ lapply(evdf, replace_NA,
 
 # Check IDs are here
 lapply(evdf, function(d) !any(is.na(d$recorderID)))
-
+# Okay because some recorders are NA in datasets
 
 # Get datasets IDs ---
 # They were already added to dat after Dataset insertion
@@ -515,10 +606,11 @@ lapply(evdf, function(d) !any(is.na(d$recorderID)))
 lapply(evdf, function(d) !any(is.na(d$datasetID)))
 # All IDs have been found
 
+
 lapply(evdf,
        setnames,
-       old = c("locationID", "eventDateID", "recorderID", "datasetID"),
-       new = c("location", "eventDate", "recorder", "dataset"))
+       old = c("eventLocationID", "parentLocationID", "eventDateID", "recorderID", "datasetID"),
+       new = c("location", "parentEvent", "eventDate", "recorder", "dataset"))
 
 cols <- colnames_DB(con, "Event", rm_ID = TRUE)
 
@@ -528,16 +620,29 @@ evdf <- data.table(do.call("rbind", evdf))
 
 evdfu <- unique(evdf)
 
+# Checks
+any(is.na(evdfu[dataset != "CY01", location]))
+noparcy <- evdfu[((dataset != "CY01") & !isParentEvent), ]
+any(is.na(noparcy$eventDate))
+any(is.na(evdfu$dataset))
+any(is.na(evdfu[dataset == "FRST" & !isParentEvent, parentEvent]))
+
+
+all(is.na(unique(evdfu$samplingEffort)))
+all(is.na(unique(evdfu$wind)))
+
+all(is.na(unique(evdfu$cloudCover))) # no clouds
+all(is.na(unique(evdfu$elevation))) # no elevation
+all(is.na(unique(evdfu$eventRemarks))) # no event remarks (are stored in occurrences)
+
 dbAppendTable(con, "Event", evdfu)
 
 ## Occurrence -----
 cols <- colnames_DB(con, "Occurrence", rm_ID = TRUE)
 
-cols <- cols[!(cols %in% c("location", "date", "recorder", "dataset"))]
+cols <- cols[!(cols %in% c("location", "date"))]
 cols <- c("decimalCoordinates", "eventDate", "eventTime", "eventDateUncertainty",
-          "recordedBy", "recordedByID",
-          "datasetName",
           cols)
 
-# Need to get ID for event, taxon, location, date
+# Need to get ID for event and taxon
 

@@ -83,12 +83,13 @@ CREATE TABLE "Event"(
   "dataset" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
   "eventType" VARCHAR(20) CHECK ("eventType" IN ('transect',
                                  'opportunistic', 'site_counts', 'museum_specimen')),
-  "parentEventID" INT REFERENCES "Event"("eventID"),
+  "parentEvent" INT REFERENCES "Event"("eventID"),
   "samplingEffort" NUMERIC,
   "wind" VARCHAR(50),
   "cloudCover" VARCHAR(50),
   "elevation" NUMERIC,
-  "eventRemarks" VARCHAR(200)
+  "eventRemarks" VARCHAR(200),
+  "isParentEvent" BOOLEAN
 );
 
 CREATE TABLE "Occurrence"(
