@@ -30,34 +30,6 @@ library(dragondb)
 read_folder <- here("data/03_data_clean/subset")
 
 
-# Replace all NA values with "__NA__"
-
-#' Replace `NA` values
-#'
-#' Replace `NA` values in a data.table with a placeholder
-#'
-#' @param dt the data.table
-#' @param SDcols the columns in which to replace values
-#' @param placeholder the placeholder
-#' @param rev reverse (i.e. replace placeholder back with `NA`).
-#'
-#' @returns the data.table where NA values are replaced with `placeholder`
-#' (or the reverse if `rev` is `TRUE`)
-#' @export
-replace_NA <- function(dt, SDcols, placeholder = "__NA__", rev = FALSE) {
-
-  if (!rev) {
-    dt[, (names(.SD)) := lapply(.SD,
-                                function(x) fifelse(is.na(x), placeholder, x)),
-       .SDcols = SDcols]
-  } else {
-    dt[, (names(.SD)) := lapply(.SD,
-                                function(x) fifelse(x == placeholder, NA, x)),
-       .SDcols = SDcols]
-  }
-
-}
-
 # Read data ---------------------------------------------------------------
 
 ls <- list.files(read_folder,
