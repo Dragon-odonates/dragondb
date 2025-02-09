@@ -1,7 +1,8 @@
 ^DragonDB\.Rproj$
 ^\.Rproj\.user$
 ^analyses$
-^data$
+^data\*
+^data\*\*
 ^outputs$
 ^\.gitignore$
 ^\.gitattributes$
