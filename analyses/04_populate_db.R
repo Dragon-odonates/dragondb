@@ -41,7 +41,7 @@ dat <- lapply(ls,
               fread,
               header = TRUE,
               na.strings = c("", "NA"),
-              # nrows = 15,
+              nrows = 10,
               sep = ",")
 names(dat) <- nam
 
@@ -73,40 +73,57 @@ spdf <- do.call("rbind",
 spdf <- unique(spdf)
 spdf <- na.omit(spdf)
 
-# dbAppendTable(con, "Taxon", spdf)
+dbAppendTable(con, "Taxon", spdf)
 
 ## Recorder -----
 cols <- c("recordedBy", "recordedByID")
 
-obdf <- lapply(dat, df_all_cols, cols = cols)
+### Get recorder name for Nl -----
+recorder_css_class <- ".app-content-title"
 
-obdf <- lapply(obdf, unique)
-obdf <- lapply(obdf, rm_all_na)
+recorderID <- unique(na.omit(dat$Netherlands$recordedByID))
 
-# Get observer name for Nl
-observer_css_class <- ".app-content-title"
-
-obdf$Netherlands[, recordedBy := as.character(recordedBy)]
-
-for (i in 1:nrow(obdf$Netherlands)) {
-  page <- obdf$Netherlands$recordedByID[i]
+for (i in 1:length(recorderID)) {
+  page <- recorderID[i]
   txt <- read_html(page)
 
   observer_name <- txt |>
-    html_node(css = observer_css_class) |>
+    html_node(css = recorder_css_class) |>
     html_text(trim = TRUE)
-  obdf$Netherlands[i, recordedBy := observer_name]
+
+  dat$Netherlands[recordedByID == page, recordedBy := observer_name]
 }
 
-obdf <- do.call("rbind",
-                c(obdf, fill = TRUE))
+redf <- lapply(dat, df_all_cols, cols = cols)
 
-setnames(obdf,
+redf <- lapply(redf, unique)
+redf <- lapply(redf, rm_all_na)
+
+redf <- do.call("rbind",
+                c(redf, fill = TRUE))
+
+setnames(redf,
          old = c("recordedBy", "recordedByID"),
          new = c("name", "recorderID_orig"))
 
-# dbAppendTable(con, "Recorder", obdf)
+dbAppendTable(con, "Recorder", redf)
 
+### Add recorder columns in dat -----
+rec_db <- dbGetQuery(con, 'SELECT "recorderID", "recorderID_orig" AS "recordedByID", "name" AS "recordedBy"
+                    FROM "Recorder";')
+rec_db <- data.table(rec_db)
+
+dat <- lapply(dat,
+              function(d) {
+                # Add columns to data if not present
+                cols_to_add <- cols[!(cols %in% colnames(d))]
+                d[, (cols_to_add) := NA]
+
+                # Join
+                join_dt_na(d, rec_db, cols1 = cols)
+              })
+
+lapply(dat, function(d) any(is.na(d$recorderID)))
 
 ## EventDate -----
 cols <- colnames_DB(con, "EventDate", rm_ID = TRUE)
@@ -119,7 +136,23 @@ dtdf <- do.call("rbind",
 dtdf <- unique(dtdf)
 dtdf <- rm_all_na(dtdf)
 
-# dbAppendTable(con, "EventDate", dtdf)
+dbAppendTable(con, "EventDate", dtdf)
+
+### Add date ID column in dat -----
+dt_db <- dbGetQuery(con, 'SELECT * FROM "EventDate";')
+dt_db <- data.table(dt_db)
+
+dat <- lapply(dat,
+              function(d) {
+                # Add columns to data if not present
+                cols_to_add <- cols[!(cols %in% colnames(d))]
+                d[, (cols_to_add) := NA]
+
+                # Join
+                join_dt_na(d, dt_db, cols1 = cols)
+              })
+
+lapply(dat, function(d) any(is.na(d$eventDateID)))
 
 ## Dataset -----
 cols <- colnames_DB(con, "Dataset", rm_ID = FALSE)
@@ -131,8 +164,7 @@ datinfo <- data.table(read_excel(here("data/metadata/metadata.xlsx"),
 datinfo_par <- datinfo[isParentDataset == TRUE, ]
 datinfo_nopar <- datinfo[isParentDataset == FALSE, ]
 
-# Add dataset/parent datasets to dat
-
+### Add datasets names and IDs to dat -----
 ind_nopar <- which(names(dat) %in% datinfo_nopar$datasetName)
 
 lapply(seq_along(dat),
@@ -165,14 +197,13 @@ dadf <- lapply(dadf, unique)
 dadf <- do.call("rbind",
                 dadf)
 
-# Add description
+### Add description -----
 datmerge <- datinfo[, c("datasetID", "description")]
 
 dadf <- datmerge[dadf,
                  on = "datasetID"]
 
-
-# Generate missing datasets IDs
+### Generate missing datasets IDs -----
 # get parents datasets for datasets with no ID
 parNA <- dadf[is.na(datasetID), parentDataset]
 
@@ -195,7 +226,7 @@ did <- unlist(did)
 
 dadf[is.na(datasetID), datasetID := did]
 
-# Add missing IDs to dat
+### Add missing IDs to dat -----
 ind_par <- which(names(dat) %in% datinfo_par$datasetName)
 
 lapply(ind_par,
@@ -216,7 +247,7 @@ datinfo_par_add <- datinfo_par[datasetID %in% dadf$parentDataset,
 
 dadf <- rbind(datinfo_par_add, dadf, fill = TRUE)
 
-# dbAppendTable(con, "Dataset", dadf)
+dbAppendTable(con, "Dataset", dadf)
 
 ## Contact -----
 cols <- colnames_DB(con, "Contact", rm_ID = FALSE)
