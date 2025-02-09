@@ -118,3 +118,64 @@ replace_NA <- function(dt, SDcols, placeholder = "__NA__", rev = FALSE) {
   }
 
 }
+
+
+#' Join data.tables on columns containing NAs
+#'
+#' @param dt1 First data.table (primary data.table for join)
+#' @param dt2 Second data.table (secondary data.table)
+#' @param cols1 Columns used for the join in primary data.table
+#' @param cols2 Columns used for the join in secondary data.table
+#' @param placeholder placeholder for the NAs
+#'
+#' @returns The merge of the two data.tables, considering NA values
+#' as a match.
+#' @export
+join_dt_na <- function(dt1, dt2, cols1, cols2 = cols1,
+                       placeholder = "__NA__") {
+
+  dt1 <- copy(dt1)
+  dt2 <- copy(dt2)
+
+  # Store original classes
+  orig_types <- lapply(dt1, class)
+  # Make functions (as.xxx) from the data types (xxx)
+  cast <- sapply(orig_types,
+                 function(t) {
+                   if (length(t) > 1) t <- t[1]
+                   get(paste0("as.", t))
+                 })
+
+  # Convert to character to prepare for placeholder
+  dt1[, names(.SD) := lapply(.SD, as.character),
+      .SDcols = cols1]
+  dt2[, names(.SD) := lapply(.SD, as.character),
+      .SDcols = cols2]
+
+  # Replace NAs with placeholder
+  replace_NA(dt1,
+             SDcols = cols1,
+             placeholder = placeholder)
+  replace_NA(dt2,
+             SDcols = cols2,
+             placeholder = placeholder)
+
+  # Merge data.tables
+  cols <- cols2
+  names(cols) <- cols1
+
+  res <- dt2[dt1,
+             on = cols]
+
+  # replace placeholders with NA
+  replace_NA(res,
+             SDcols = cols1,
+             placeholder = placeholder,
+             rev = TRUE)
+
+  # Convert back columns to original type
+  res[, names(.SD) := Map(function(fun, col) fun(col), cast, .SD),
+      .SDcols = names(cast)]
+
+  return(res)
+}
