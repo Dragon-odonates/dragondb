@@ -12,7 +12,8 @@
 #'
 #' @param connexion connexion to the table (class `PqConnection`)
 #' @param table table to retrieve names from
-#' @param rm_ID Remove ID column? (columns that end with ID)
+#' @param rm_ID Remove ID column? It is assimet to be the name of the table,
+#' but starting with a lowercase letter, follower by "ID"
 #'
 #' @return The table column names
 #'
@@ -23,7 +24,10 @@ colnames_DB <- function(connexion,
   colnames <- dbListFields(connexion, table)
 
   if (rm_ID) {
-    colnames <- colnames[-grep("ID$", colnames)]
+    table_ID <- paste0(tolower(substr(table, 1, 1)),
+                       substr(table, 2, nchar(table)),
+                       "ID")
+    colnames <- colnames[colnames != table_ID]
   }
   return(colnames)
 }
@@ -138,7 +142,7 @@ join_dt_na <- function(dt1, dt2, cols1, cols2 = cols1,
   dt2 <- copy(dt2)
 
   # Store original classes
-  orig_types <- lapply(dt1, class)
+  orig_types <- lapply(dt1[, ..cols1], class)
   # Make functions (as.xxx) from the data types (xxx)
   cast <- sapply(orig_types,
                  function(t) {
@@ -161,15 +165,15 @@ join_dt_na <- function(dt1, dt2, cols1, cols2 = cols1,
              placeholder = placeholder)
 
   # Merge data.tables
-  cols <- cols2
-  names(cols) <- cols1
+  cols <- cols1
+  names(cols) <- cols2
 
   res <- dt2[dt1,
              on = cols]
 
   # replace placeholders with NA
   replace_NA(res,
-             SDcols = cols1,
+             SDcols = cols2,
              placeholder = placeholder,
              rev = TRUE)
 
@@ -177,5 +181,24 @@ join_dt_na <- function(dt1, dt2, cols1, cols2 = cols1,
   res[, names(.SD) := Map(function(fun, col) fun(col), cast, .SD),
       .SDcols = names(cast)]
 
+  return(res)
+}
+
+#' Standardize well-known text
+#'
+#' @param coord character vector containing well-known text
+#' representation of coordinates
+#'
+#' @returns A character vector where the output is standardized (to avoid
+#' misplaced spaces)
+#'
+#' @details Converts the character vector to an object of class `sfc`,
+#' then back to character.
+#'
+#' @export
+std_coord_text <- function(coord) {
+
+  res <- st_as_sfc(coord)
+  res <- st_as_text(res)
   return(res)
 }
