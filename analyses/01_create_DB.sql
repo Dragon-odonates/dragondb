@@ -41,7 +41,7 @@ CREATE TABLE "Dataset"(
   "datasetID" VARCHAR(4) PRIMARY KEY NOT NULL,
   "datasetName" VARCHAR(200) UNIQUE,
   "description" VARCHAR(200),
-  "parentDataset" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
+  "parentDatasetID" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
   "isParentDataset" BOOLEAN
 );
 
@@ -54,9 +54,9 @@ CREATE TABLE "Contact"(
 );
 
 CREATE TABLE "DatasetContact"(
-  "dataset" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
-  "contact" INT REFERENCES "Contact"("contactID"),
-  PRIMARY KEY ("dataset", "contact")
+  "datasetID" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
+  "contactID" INT REFERENCES "Contact"("contactID"),
+  PRIMARY KEY ("datasetID", "contactID")
 );
 
 CREATE TABLE "Location"(
@@ -77,31 +77,33 @@ CREATE TABLE "Location"(
 
 CREATE TABLE "Event"(
   "eventID" SERIAL PRIMARY KEY,
-  "location" INT REFERENCES "Location"("locationID"),
-  "eventDate" INT REFERENCES "EventDate"("eventDateID"),
-  "recorder" INT REFERENCES "Recorder"("recorderID"),
-  "dataset" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
+  "locationID" INT REFERENCES "Location"("locationID"),
+  "eventDateID" INT REFERENCES "EventDate"("eventDateID"),
+  "recorderID" INT REFERENCES "Recorder"("recorderID"),
+  "datasetID" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
   "eventType" VARCHAR(20) CHECK ("eventType" IN ('transect',
                                  'opportunistic', 'site_counts', 'museum_specimen')),
-  "parentEvent" INT REFERENCES "Event"("eventID"),
+  "parentEventID" INT REFERENCES "Event"("eventID"),
   "samplingEffort" NUMERIC,
   "wind" VARCHAR(50),
   "cloudCover" VARCHAR(50),
   "elevation" NUMERIC,
   "eventRemarks" VARCHAR(200),
-  "isParentEvent" BOOLEAN
+  "isParentEvent" BOOLEAN,
+  UNIQUE NULLS NOT DISTINCT ("locationID", "eventDateID", "recorderID",
+                             "datasetID", "eventType", "parentEventID")
 );
 
 CREATE TABLE "Occurrence"(
   "occurrenceID" SERIAL PRIMARY KEY,
-  "event" INT REFERENCES "Event"("eventID"),
-  "taxon" INT REFERENCES "Taxon"("taxonID"),
+  "eventID" INT REFERENCES "Event"("eventID"),
+  "taxonID" INT REFERENCES "Taxon"("taxonID"),
   "individualCount" INT,
   "lifeStage" VARCHAR(20),
   "sex" VARCHAR(10),
   "behavior" VARCHAR(100),
   "degreeOfEstablishment" INT,
-  "identificationVerificationStatus" INT,
+  "identificationVerificationStatus" VARCHAR(100),
   "associatedMedia" VARCHAR(200),
   "embargoDate" DATE,
   "accessRights" VARCHAR(50),

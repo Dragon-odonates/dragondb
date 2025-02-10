@@ -334,17 +334,18 @@ for (nam in dat_recode_names) {
   if ("lifeStage" %in% names(d)) {
     d[, lifeStage := NULL]
   }
-  if ("count" %in% names(d)) {
-    d[, count := NULL]
+  if ("individualCount" %in% names(d)) {
+    d[, individualCount := NULL]
   }
 
   dat[[nam]] <- melt(d,
                      measure.vars = patterns("^lifeStage_count"),
-                     variable.name = "lifeStage", value.name = "count",
+                     variable.name = "lifeStage", value.name = "individualCount",
                      na.rm = TRUE)
   dat[[nam]][, lifeStage := lifestage_key[lifeStage]]
 
-  dat[[nam]] <- dat[[nam]][count != 0]
+  # TODO: Check that true absences are not lost
+  dat[[nam]] <- dat[[nam]][individualCount != 0]
 }
 
 lapply(dat, head)
