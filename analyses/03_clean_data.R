@@ -384,6 +384,48 @@ lapply(ind_auto,
 
 lapply(dat, function(d) unique(d$eventType))
 
+
+## Dataset -----
+
+datinfo_par <- datinfo[isParentDataset == TRUE, ]
+datinfo_nopar <- datinfo[isParentDataset == FALSE, ]
+
+### Add datasets names and IDs to dat -----
+ind_nopar <- which(names(dat) %in% datinfo_nopar$datasetName)
+
+lapply(seq_along(dat),
+       function(i) {
+         if (i %in% ind_nopar) { # This dataset has no children datasets
+           # Get dataset ID corresponding to list name
+           id <- datinfo_nopar[datasetName == names(dat)[i], datasetID]
+
+           # Set datasetID
+           dat[[i]][, datasetID := id]
+
+         } else { # This dataset has children datasets
+           # Get dataset ID corresponding to list name
+           id <- datinfo_par[datasetName == names(dat)[i], datasetID]
+
+           # Set parentDatasetID
+           dat[[i]][, parentDatasetID :=  id]
+
+           # Set children datasetID
+
+           # Get unique names of children datasets
+           dnames <- unique(dat[[i]]$datasetName)
+
+           # Generate datasetID on the model first dataset letter + X + number
+           sq <- seq(1, length(dnames))
+           did <- str_pad(sq, 2, pad = "0")
+           did <- paste0(str_sub(id, 1, 1), "X", did)
+           names(did) <- dnames
+
+           # Set datasetID
+           dat[[i]][, datasetID := did[datasetName]]
+         }
+       })
+
+
 # Write files ------------------------------------------------------------------
 lapply(names(dat),
        function(nam) write.table(dat[[nam]],
