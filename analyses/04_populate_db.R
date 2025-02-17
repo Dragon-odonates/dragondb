@@ -46,6 +46,14 @@ dat <- lapply(ls,
               sep = ",")
 names(dat) <- nam
 
+# df <- rbindlist(dat, fill = TRUE)
+#
+# write.table(df,
+#             file = here("data/03_data_clean/example/example.csv"),
+#             row.names = FALSE,
+#             qmethod = "double",
+#             sep = ",")
+
 # Connect to DB -----------------------------------------------------------
 # Connect to "local" DB
 con <- dbConnect(
@@ -588,3 +596,19 @@ oc_df <- unique(oc_df)
 if (populate_db) {
   dbAppendTable(con, "Occurrence", oc_df)
 }
+
+ev_db <- dbGetQuery(con, 'SELECT "species",
+                          ST_AsText("decimalCoordinates") AS "decimalCoordinates",
+                          "eventDate", "Event"."datasetID", "datasetName", "parentDatasetID"
+                          FROM "Taxon"
+                          LEFT JOIN "Occurrence"
+                              ON "Taxon"."taxonID" = "Occurrence"."taxonID"
+                          LEFT JOIN "Event"
+                              ON "Event"."eventID" = "Occurrence"."eventID"
+                          LEFT JOIN "EventDate"
+                              ON "Event"."eventDateID" = "EventDate"."eventDateID"
+                          LEFT JOIN "Location"
+                              ON "Event"."locationID" = "Location"."locationID"
+                          LEFT JOIN "Dataset"
+                              ON "Event"."datasetID" = "Dataset"."datasetID";')
+ev_db
