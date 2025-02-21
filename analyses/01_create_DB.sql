@@ -81,8 +81,9 @@ CREATE TABLE "Event"(
   "eventDateID" INT REFERENCES "EventDate"("eventDateID"),
   "recorderID" INT REFERENCES "Recorder"("recorderID"),
   "datasetID" VARCHAR(4) REFERENCES "Dataset"("datasetID"),
-  "eventType" VARCHAR(20) CHECK ("eventType" IN ('transect',
-                                 'opportunistic', 'site_counts', 'museum_specimen')),
+  "eventType" VARCHAR(20) CHECK ("eventType" IN ('Transect',
+                                 'HumanObservation', 'SiteCounts', 'PreservedSpecimen',
+                                 'Historical')),
   "parentEventID" INT REFERENCES "Event"("eventID"),
   "samplingEffort" NUMERIC,
   "wind" VARCHAR(50),
@@ -107,5 +108,6 @@ CREATE TABLE "Occurrence"(
   "associatedMedia" VARCHAR(200),
   "embargoDate" DATE,
   "accessRights" VARCHAR(50),
+  "occurrenceStatus" VARCHAR(20) CHECK ("occurrenceStatus" IN ('present', 'absent')),
   "occurrenceRemarks" VARCHAR(200)
 );
