@@ -158,6 +158,86 @@ coerced_to_na <- function(before, after, return = FALSE) {
                 values_added = values_added)
     return(res)
   }
+}
 
 
+#' Recode counts values
+#'
+#' This function recodes counts that are encoded in different columns
+#' to a single column, and a second column indicating individual type
+#' (under the hood, it melts the data.table to long)
+#'
+#' @param d data.table
+#' @param key key to get the values that each column encodes (these values
+#' replace the old column names in column `variable.name`)
+#' @param variable.name The name of the column holding variables
+#' @param occurrenceStatus name of the column in which original occurrence
+#' status (i.e. are all initial counts zero) is stored
+#' @param all_zeroes_to_na convert all zeroes to NA, even when the entire row is
+#' zero? If FALSE, only pseudo-zeroes are converted to NA (i.e. zeroes where
+#' at least one value is non-zero)
+#' @param value.name The name of the column holding values
+#' @param na.rm Remove NAs in the melt step?
+#'
+#' @returns The modified data.table where columns in key have been transformed
+#' to long form, and `occurrenceStatus` has been added.
+#' @export
+recode_counts <- function(d, key,
+                          variable.name = "lifeStage",
+                          value.name = "individualCount",
+                          occurrenceStatus = "occurrenceStatus",
+                          all_zeroes_to_na = FALSE,
+                          na.rm = TRUE) {
+
+  # Get the columns thar atr present in data
+  cols <- colnames(d)[colnames(d) %in% names(key)]
+
+  # Clean these columns (to numeric)
+  d[, names(.SD) := lapply(.SD, clean_count),
+    .SDcols = cols]
+
+  # Get occurrence status
+  d[, (occurrenceStatus) := fifelse(rowSums(.SD, na.rm = TRUE) != 0,
+                                    "present", "absent"),
+    .SDcols = cols]
+
+  # # Convert zeroes to NAs
+  if (all_zeroes_to_na) {
+    # Transform all zeroes to NA
+    d[, names(.SD) := lapply(.SD, function(v) ifelse(v == 0, NA, v)),
+      .SDcols = cols]
+  } else { # Convert only pseudo-zeroes to NA
+    # Get rows for which there was at least one obs
+    pseudo_zeroes <- which(d[[occurrenceStatus]] == "present")
+
+    # For these rows, transform all zeroes to NAs
+    d[pseudo_zeroes,
+      names(.SD) := lapply(.SD, function(v) ifelse(v == 0, NA, v)),
+      .SDcols = cols]
+  }
+
+
+  # Reshape data
+
+  # If result columns already exist, delete them
+  if (variable.name %in% colnames(d)) {
+    d[, names(.SD) := NULL, .SDcols = variable.name]
+  }
+  if (value.name %in% colnames(d)) {
+    d[, names(.SD) := NULL, .SDcols = value.name]
+  }
+
+  # Reshape
+  d[, names(.SD) := lapply(.SD, as.numeric), .SDcols = cols]
+  d <- melt(d,
+            measure.vars = cols,
+            variable.name = variable.name,
+            value.name = value.name,
+            na.rm = na.rm)
+
+  # Replace old column names with their key
+  d[, names(.SD) := key[as.character(d[[variable.name]])],
+    .SDcols = variable.name]
+
+  return(d)
 }

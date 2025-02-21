@@ -11,7 +11,8 @@ colnames_DB(connexion, table, rm_ID = TRUE)
 
 \item{table}{table to retrieve names from}
 
-\item{rm_ID}{Remove ID column? (columns that end with ID)}
+\item{rm_ID}{Remove ID column? It is assimet to be the name of the table,
+but starting with a lowercase letter, follower by "ID"}
 }
 \value{
 The table column names
