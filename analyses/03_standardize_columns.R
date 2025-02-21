@@ -25,25 +25,25 @@ read_folder_meta <- here("data/metadata")
 dat <- list()
 
 dat[["Austria"]] <- data.table(read_excel(file.path(read_folder,
-                                                    "Odonata_Austria_Export.xlsx"),
+                                                    "Austria/Odonata_Austria_Export.xlsx"),
                                           sheet = "Tabelle1"))
 
 dat[["Belgium1"]] <- data.table(readRDS(file.path(read_folder,
-                                                  "belgieData.rds")))
+                                                  "Belgium1/belgieData.rds")))
 dat[["Belgium2"]] <- fread(file.path(read_folder,
-                                     "2024-076_libellen_EN.csv"))
+                                     "Belgium2/2024-076_libellen_EN.csv"))
 
 dat[["Cyprus1"]] <- fread(file.path(read_folder,
-                                    "Cyprus corrected.csv"))
+                                    "Cyprus1/Cyprus corrected.csv"))
 
 # Cyprus 2
 lf <- list.files(file.path(read_folder,
-                           "Cyprus Data dragonflies"))
+                           "Cyprus2"),
+                 full.names = TRUE)
 
 dat[["Cyprus2"]] <- data.table()
 for(i in seq_along(lf)){
-  cyp_data <- data.table(read_excel(file.path(read_folder,
-                                              "Cyprus Data dragonflies", lf[i]),
+  cyp_data <- data.table(read_excel(lf[i],
                                     col_types = c("text", "text", "date",
                                                   "numeric", "numeric", "numeric",
                                                   "text",
@@ -88,19 +88,56 @@ for(i in seq_along(lf)){
 
 # Netherlands
 dat[["Netherlands"]] <- data.table(readRDS(file.path(read_folder,
-                                                     "Dutchdata2023.RDS")))
+                                                     "Netherlands/Dutchdata2023.RDS")))
 
 sp_ned <- fread(file.path(read_folder,
-                          "Soortcodes_nl_sci.csv"))
+                          "Netherlands/Soortcodes_nl_sci.csv"))
 sp_ned[, srt_Nednaam := tolower(srt_Nednaam)]
 dat[["Netherlands"]] <- merge(dat[["Netherlands"]], sp_ned,
                               by.x = "soort_nl", by.y = "srt_Nednaam",
                               all.x = TRUE)
 
 dat[["France_STELI"]] <- fread(file.path(read_folder,
-                                         "STELI_data_FR_DMS.csv"))
+                                         "France_STELI/STELI_data_FR_DMS.csv"))
 
-dat[["France_Atlas"]] <- fread(file.path(read_folder, "odonata_202410091558.csv"))
+dat[["France_Atlas"]] <- fread(file.path(read_folder, "France_Atlas/odonata_202410091558.csv"))
+
+# UK
+path <- file.path(read_folder, "UK")
+ld <- list.dirs(path,
+                full.names = TRUE)
+ld <- ld[ld != path]
+
+dat[["UK"]] <- data.table()
+for (d in ld) {
+  print(paste(d, "---"))
+  df <- fread(file.path(d, "data.csv"), sep = ",", header = TRUE)
+  print(ncol(df))
+
+  dat[["UK"]] <- rbind(dat[["UK"]], df, fill = TRUE)
+}
+
+# Sweden
+path <- file.path(read_folder, "Sweden/Observations 2025-01-30 15.18 SOS export")
+lf <- list.files(path,
+                 full.names = TRUE)
+lf <- lf[grep(lf, pattern = "\\.xlsx$")]
+
+dat[["Sweden"]] <- data.table()
+for (f in lf) {
+  print(paste(f, "---"))
+  df <- data.table(read_excel(f, sheet = 1,
+                              col_types = "text"))
+  print(ncol(df))
+
+  dat[["Sweden"]] <- rbind(dat[["Sweden"]], df, fill = TRUE)
+}
+
+# Catalonia
+dat[["Catalonia"]] <- data.table(read  _excel(file.path(read_folder,
+                                                    "Catalonia/-Oxygastra definitiu 7 abril Mike.xls"),
+                                            col_types = "text",
+                                            sheet = 1))
 
 # Standardize column names ------------------------------------------------
 
