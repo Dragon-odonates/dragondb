@@ -1,3 +1,12 @@
+# Header #############################################################
+#
+# Author: Lisa Nicvert
+# Email:  lisa.nicvert@fondationbiodiversite.fr
+#
+# Date: 2025-02-21
+#
+# Script Description: query UK data through API
+
 library(httr2)
 library(brio)
 library(here)
@@ -31,7 +40,7 @@ for (year in years) {
   }
 
   # Write zip folder
-  zip_path <- file.path(here("data/to_process/UK"),
+  zip_path <- file.path(here("data/01_data_raw/UK"),
                         zip_folder)
   res |>
     httr2::resp_body_raw() |>
