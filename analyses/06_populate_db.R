@@ -17,7 +17,6 @@ library(RPostgres)
 
 library(readxl)
 
-library(rvest) # read htlm
 library(stringr)
 
 # For spatial info
@@ -27,7 +26,7 @@ library(dplyr)
 
 library(dragondb)
 
-read_folder <- here("data/03_data_clean/subset")
+read_folder <- here("data/03_data_clean/tmp")
 
 populate_db <- TRUE # run the code that populates the db?
 
@@ -42,17 +41,9 @@ dat <- lapply(ls,
               fread,
               header = TRUE,
               na.strings = c("", "NA"),
-              nrows = 10,
+              # nrows = 100,
               sep = ",")
 names(dat) <- nam
-
-# df <- rbindlist(dat, fill = TRUE)
-#
-# write.table(df,
-#             file = here("data/03_data_clean/example/example.csv"),
-#             row.names = FALSE,
-#             qmethod = "double",
-#             sep = ",")
 
 # Connect to DB -----------------------------------------------------------
 # Connect to "local" DB
@@ -89,22 +80,6 @@ if (populate_db) {
 ## Recorder -----
 cols <- c("recordedBy", "recordedByID")
 
-### Get recorder name for Nl -----
-recorder_css_class <- ".app-content-title"
-
-recorderID <- unique(na.omit(dat$Netherlands$recordedByID))
-
-for (i in 1:length(recorderID)) {
-  page <- recorderID[i]
-  txt <- read_html(page)
-
-  observer_name <- txt |>
-    html_node(css = recorder_css_class) |>
-    html_text(trim = TRUE)
-
-  dat$Netherlands[recordedByID == page, recordedBy := observer_name]
-}
-
 redf <- lapply(dat, df_all_cols, cols = cols)
 
 redf <- lapply(redf, unique)
@@ -140,6 +115,7 @@ dat <- lapply(dat,
 
 lapply(dat, function(d) any(is.na(d$recorderID)))
 # Belgium1,2 and Cyprus1,2 have NAs because they have no observer
+# Netherlands too because some are NA
 
 ## EventDate -----
 cols <- colnames_DB(con, "EventDate", rm_ID = TRUE)
@@ -174,6 +150,9 @@ dat <- lapply(dat,
 lapply(dat, function(d) any(is.na(d$eventDateID)))
 # No NAs dates \o/
 
+lapply(dat, function(d) df_all_cols(d[is.na(d$eventDateID),],
+                                    c("eventDate", "eventTime", "eventDateUncertainty")))
+
 ## Dataset -----
 
 # Get datasets IDs
@@ -197,6 +176,9 @@ datmerge <- datinfo[, .(datasetID, isParentDataset, datasetName,
                         description)]
 
 dadf <- datmerge[dadf, on = "datasetID"]
+
+# Remove dataests that are NA
+dadf <- dadf[which(!is.na(dadf$datasetID)), ]
 
 if (populate_db) {
   dbAppendTable(con, "Dataset", dadf)
