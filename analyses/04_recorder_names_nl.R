@@ -5,7 +5,7 @@
 #
 # Date: 2025-02-21
 #
-# Script Description: query observer names for Netherlands from th URLs
+# Script Description: query recorder names for Netherlands from th URLs
 
 
 # Libraries etc -----------------------------------------------------------
@@ -52,7 +52,6 @@ for (i in 1:nrow(res)) {
       html_node(css = recorder_css_class) |>
       html_text(trim = TRUE)
 
-    # dat$Netherlands[recordedByID == page, recordedBy := observer_name]
     res[i, recordedBy := observer_name]
   } else {
     message("Error: ", txt)
@@ -62,18 +61,18 @@ for (i in 1:nrow(res)) {
 }
 
 # write.table(res,
-#             file = here("data/03_data_clean/observer/ned_names.csv"),
+#             file = here("data/precomputed/recorder/ned_names.csv"),
 #             row.names = FALSE,
 #             qmethod = "double",
 #             sep = ",")
 
 # Fiddle with partial records ---------------------------------------------
 
-# ned_names1 <- fread(here("data/03_data_clean/observer/ned_names1.csv"),
+# ned_names1 <- fread(here("data/precomputed/recorder/ned_names1.csv"),
 #                     header = TRUE,
 #                     na.strings = c("", "NA"),
 #                     sep = ",")
-# ned_names2 <- fread(here("data/03_data_clean/observer/ned_names2.csv"),
+# ned_names2 <- fread(here("data/precomputed/recorder/ned_names2.csv"),
 #                     header = TRUE,
 #                     na.strings = c("", "NA"),
 #                     sep = ",")
@@ -119,7 +118,7 @@ for (i in 1:nrow(res)) {
 # }
 #
 # write.table(res,
-#             file = here("data/03_data_clean/observer/ned_names.csv"),
+#             file = here("data/precomputed/recorder/ned_names.csv"),
 #             row.names = FALSE,
 #             qmethod = "double",
 #             sep = ",")
