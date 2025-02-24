@@ -34,7 +34,7 @@ nam <- gsub("\\.csv$", "", basename(ls))
 dat <- lapply(ls,
               fread,
               header = TRUE,
-              nrows = 100,
+              # nrows = 100,
               na.strings = c("", "NA"),
               sep = ",")
 names(dat) <- nam
@@ -517,14 +517,14 @@ lapply(dat[!ev_type], function(d) unique(d$eventType))
 
 # Belgium2
 type_orig <- unique(dat$Belgium2$eventType)
-type_new <- c(NA, "TransectCount", "SiteCounts")
+type_new <- c(NA, "Transect", "SiteCounts")
 names(type_new) <- type_orig
 
 dat$Belgium2[, eventType := unname(type_new[eventType])]
 
 # Cyprus1
 type_orig <- unique(dat$Cyprus1$eventType)
-type_new <- c("PreservedSpecimen", "TransectCount",
+type_new <- c("PreservedSpecimen", "Transect",
               "HumanObservation", "HumanObservation", "HumanObservation",
               NA)
 names(type_new) <- type_orig
@@ -606,7 +606,7 @@ lapply(dat, function(d) unique(df_all_cols(d,
 
 # Observer names ----------------------------------------------------------
 
-res <- fread(here("data/03_data_clean/observer/ned_names.csv"),
+res <- fread(here("data/precomputed/recorder/ned_names.csv"),
              header = TRUE,
              na.strings = c("", "NA"),
              sep = ",")
@@ -639,32 +639,32 @@ lapply(names(dat),
 # Pre-copy ----------------------------------------------------------------
 
 # Pre-copy data because above steps take a long time
-lapply(names(dat),
-       function(nam) write.table(dat[[nam]],
-                                 file = here(file.path("data/03_data_clean/tmp",
-                                                       paste0(nam, ".csv"))),
-                                 row.names = FALSE,
-                                 qmethod = "double",
-                                 sep = ",")
-)
-
-ls <- list.files(here("data/03_data_clean/tmp"),
-                 full.names = TRUE)
-nam <- gsub("\\.csv$", "", basename(ls))
-
-dat <- lapply(ls,
-              fread,
-              header = TRUE,
-              na.strings = c("", "NA"),
-              sep = ",")
-names(dat) <- nam
-
-# # Write files ------------------------------------------------------------------
 # lapply(names(dat),
 #        function(nam) write.table(dat[[nam]],
-#                                  file = here(file.path("data/03_data_clean",
+#                                  file = here(file.path("data/03_data_clean/tmp",
 #                                                        paste0(nam, ".csv"))),
 #                                  row.names = FALSE,
 #                                  qmethod = "double",
 #                                  sep = ",")
 # )
+#
+# ls <- list.files(here("data/03_data_clean/tmp"),
+#                  full.names = TRUE)
+# nam <- gsub("\\.csv$", "", basename(ls))
+#
+# dat <- lapply(ls,
+#               fread,
+#               header = TRUE,
+#               na.strings = c("", "NA"),
+#               sep = ",")
+# names(dat) <- nam
+
+# # Write files ------------------------------------------------------------------
+lapply(names(dat),
+       function(nam) write.table(dat[[nam]],
+                                 file = here(file.path("data/03_data_clean",
+                                                       paste0(nam, ".csv"))),
+                                 row.names = FALSE,
+                                 qmethod = "double",
+                                 sep = ",")
+)
