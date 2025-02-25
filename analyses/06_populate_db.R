@@ -26,7 +26,7 @@ library(dplyr)
 
 library(dragondb)
 
-read_folder <- here("data/03_data_clean/tmp")
+read_folder <- here("data/03_data_clean")
 
 populate_db <- TRUE # run the code that populates the db?
 
@@ -40,8 +40,8 @@ nam <- gsub("\\.csv$", "", basename(ls))
 dat <- lapply(ls,
               fread,
               header = TRUE,
-              na.strings = c("", "NA"),
-              # nrows = 100,
+              # na.strings = c("", "NA"),
+              # nrows = 1000,
               sep = ",")
 names(dat) <- nam
 
@@ -65,17 +65,50 @@ dbListTables(con)
 ## Species -----
 colnames <- colnames_DB(con, "Taxon", rm_ID = FALSE)
 
+
+
+# Filter out records that have too vague species
+dat <- lapply(dat,
+              function(d) d[taxonRank != "ORDER",])
+# Filter out spp genus treated as spp
+dat <- lapply(dat,
+              function(d) d[!(scientificName %in% c("Anisoptera", "Zygoptera")),])
+
+# # Issue with Ophiogomphus cecilia
+# lapply(dat,
+#        function(d) unique(d[scientificName == "Ophiogomphus cecilia", .(taxonID, scientificName, verbatimName)]))
+
+# Minimal reproducible example
+# tst  <- c("Ophiogomphus cecilia (Geoffroy in Fourcroy, 1785)",
+#           "Ophiogomphus cecilia")
+# library(rgbif)
+# chk <- name_backbone_checklist(tst)
+
+# tst <- c("Anisoptera", "Zygoptera")
+# gbif <- name_backbone_checklist(tst, order = "Odonata")
+# Quick fix
+dat <- lapply(dat,
+              function(d) d[scientificName == "Ophiogomphus cecilia",
+                            taxonID := 1426058])
+dat <- lapply(dat,
+              function(d) d[scientificName == "Ophiogomphus cecilia",
+                            speciesID := 1426058])
+
+# Issue with genus too -> keep only spp
+dat <- lapply(dat,
+              function(d) d[taxonRank == "SPECIES", ])
+
 spdf <- lapply(dat, function(d) d[, ..colnames])
 
-spdf <- do.call("rbind",
-                c(spdf, fill = TRUE))
+spdf <- rbindlist(spdf, fill = TRUE)
 
 spdf <- unique(spdf)
-spdf <- na.omit(spdf)
+spdf <- rm_all_na(spdf)
 
 if (populate_db) {
   dbAppendTable(con, "Taxon", spdf)
 }
+
 
 ## Recorder -----
 cols <- c("recordedBy", "recordedByID")
@@ -83,10 +116,13 @@ cols <- c("recordedBy", "recordedByID")
 redf <- lapply(dat, df_all_cols, cols = cols)
 
 redf <- lapply(redf, unique)
-redf <- lapply(redf, rm_all_na)
 
 redf <- do.call("rbind",
                 c(redf, fill = TRUE))
+
+# Replace empty with NA
+redf <- redf[recordedBy == "", recordedBy := NA]
+redf <- rm_all_na(redf)
 
 setnames(redf,
          old = c("recordedBy", "recordedByID"),
@@ -120,11 +156,24 @@ lapply(dat, function(d) any(is.na(d$recorderID)))
 ## EventDate -----
 cols <- colnames_DB(con, "EventDate", rm_ID = TRUE)
 
+# Correct Cyprus typo
+dat$Cyprus1[, ":="(year = year(eventDate),
+           month = month(eventDate),
+           day = mday(eventDate))]
+# dat$Cyprus1[year < 1200, year]
+dat$Cyprus1[year == 21, year := 2021]
+# dat$Cyprus1[year > 2030, year]
+dat$Cyprus1[year == 3002, year := 2002]
+dat$Cyprus1[year == 2921, year := 2021]
+
+dat$Cyprus1[, eventDate := as.IDate(paste(year, month, day, sep = "-"))]
+
 dtdf <- lapply(dat, df_all_cols, cols = cols)
 dtdf <- lapply(dtdf, function(d) d[, eventTime := as.ITime(eventTime)])
 
 dtdf <- do.call("rbind",
                 c(dtdf, fill = TRUE))
+
 dtdf <- unique(dtdf)
 dtdf <- rm_all_na(dtdf)
 
@@ -218,8 +267,50 @@ if (populate_db) {
 }
 
 ## Location -----
+
+# Fix errors
+# Fix Cyprus encoding (Cyprus1)
+dat$Cyprus1[locality == "Ge\x87itkoy", locality := "Geçitkoy"]
+dat$Cyprus1[locality == "G\x94nendere", locality := "Gönendere"]
+dat$Cyprus1[locality == "Koru\x87am", locality := "Koruç87am"]
+dat$Cyprus1[locality == "K\x94prula GDK", locality := "Köprula"]
+dat$Cyprus1[locality == "Trimethousa near Evretou\xff", locality := "Trimethousa near Evretou"]
+dat$Cyprus1[locality == "Koru\x87am/G\x94leti", locality := "Koruçam/Göleti"]
+dat$Cyprus1[locality == "Kritou Terra caf\x82", locality := "Kritou Terra café"]
+dat$Cyprus1[locality == "Stavros tis Psokas valley\xff", locality := "Stavros tis Psokas valley"]
+dat$Cyprus1[locality == "Filousa hillside nr Evretou\xff", locality := "Filousa hillside nr Evretou"]
+dat$Cyprus1[locality == "Ge\x87itkoy Lower", locality := "Geçitkoy Lower"]
+dat$Cyprus1[locality == "Anarita Mast\xff", locality := "Anarita Mast"]
+
+# Replace (inderminada) with NA
+dat$Catalonia[verbatimCounty == "(indeterminada)",
+              verbatimCounty := NA]
+
+# Add country for Spain
+dat$Catalonia[!is.na(verbatimCounty) | !is.na(locality) | !is.na(municipality),
+              verbatimCountry := "Spain"]
+
+
+# unique(grep("aaa", dat$Cyprus1$locality, value = TRUE))
+
+# Coerce to numeric
+# a <- lodf$coordinateUncertaintyInMeters
+# b <- as.numeric(a)
+# coerced_to_na(a, b) # "NULL" converted to NA
+dat <- lapply(dat,
+              function(d) {
+                if ("coordinateUncertaintyInMeters" %in% colnames(d)) {
+                  d[,  coordinateUncertaintyInMeters := as.numeric(coordinateUncertaintyInMeters)]
+                } else {
+                  d
+                }
+              })
+
+
+# Get DB columns
 cols <- colnames_DB(con, "Location", rm_ID = TRUE)
 
+# Get columns to select in DB (from cols)
 cols2 <- cols
 cols2[cols2 == "country"] <- "verbatimCountry"
 cols2[cols2 == "county"] <- "verbatimCounty"
@@ -251,122 +342,50 @@ for (n in names_par) {
   lodf[[n]] <-  rbind(par_loc[[n]], lodf[[n]], fill = TRUE)
 }
 
-# Get Natural earth countries/counties
-geo <- ne_download(scale = 10, type = "states")
-geo <- geo[, c("admin", "name_en")]
-names(geo) <- c("country", "county", "geometry")
-geo <- st_make_valid(geo)
+# Read geographic info
+geo <- fread(here("data/precomputed/country.csv"),
+             header = TRUE,
+             na.strings = c("", "NA"),
+             sep = ",")
 
-for (i in seq_along(lodf)) {
-  dati <- lodf[[i]]
+# Standardize (commented bc looong)
+# geo[, decimalCoordinates := std_coord_text(decimalCoordinates)]
+# lapply(lodf,
+#        function(d) d[, decimalCoordinates := std_coord_text(decimalCoordinates)])
 
-  # Add an ID to find back NA coordinates
-  dati[, ID := 1:nrow(dati)]
+for (nam in names(lodf)) {
+  geo_i <- geo[dataset == nam, .(decimalCoordinates, country, county)]
 
-  # Get non-empty coordinates
-  pts_coord <- dati[grep("EMPTY", decimalCoordinates, invert = TRUE), ]
+  lodf[[nam]] <- geo_i[lodf[[nam]], on = "decimalCoordinates"]
 
-  if (nrow(pts_coord) != 0) { # If some data have coordinates
+  na_coord <- grep("EMPTY", lodf[[nam]]$decimalCoordinates)
 
-    # Convert to sf
-    pts_coord <- st_as_sf(pts_coord, wkt = "decimalCoordinates")
-    st_crs(pts_coord) <- 4326
-
-    # Get indices of country and county points are in
-    geo_inter <- st_intersects(pts_coord, geo)
-
-    # Get values, and drop geom
-    geo_inter <- lapply(geo_inter,
-                        function(g) data.table(st_drop_geometry(geo[g,])))
-
-    # Check for issues
-    pb_geo <- which(sapply(geo_inter, nrow) != 1)
-    if (length(pb_geo) != 0) {
-      warning("Some points belong to non-unique units")
-
-      # Try to (partially) resolve issue
-      for (k in pb_geo) {
-        if (nrow(geo_inter[[k]]) == 0) { # No matching unit
-          # Set to NA
-          geo_inter[[k]] <- data.table(country = NA,
-                                       county = NA)
-        } else { # Several units
-          countries <- geo_inter[[k]]$country
-          ucountry <- unique(countries)
-
-          if (length(ucountry) == 1) { # Several counties, but unique country
-            # Set country to ucountry and county to NA
-            geo_inter[[k]] <- data.table(country = ucountry,
-                                         county = NA)
-          } else { # Several countries
-            # Set to NA
-            geo_inter[[k]] <- data.table(country = NA,
-                                         county = NA)
-          }
-        }
-      }
-    }
-
-    # List to data.table
-    geo_inter <- do.call("rbind", geo_inter)
-    pts_coord <- data.table(pts_coord)
-
-    # Set country/county values for points with coordinates (same order)
-    pts_coord[, country := geo_inter$country]
-    pts_coord[, county := geo_inter$county]
-
-    # Merge new info to complete info where points have no coords
-    pts_coord <- pts_coord[, .(country, county, ID)]
-    dati <- pts_coord[dati, on = "ID"]
-
-  } else { # There are no coordinates
-    # Replace values with values in data
-    dati[, country := verbatimCountry]
-    dati[, county := verbatimCounty]
+  if (length(na_coord) != 0) { # Some points have no coord
+    # Rempace values with original ones
+    lodf[[nam]][na_coord, country := verbatimCountry]
+    lodf[[nam]][na_coord, county := verbatimCounty]
   }
-
-  # Remove temporary ID
-  dati[, ID := NULL]
-
-  # Set list element
-  lodf[[i]] <- dati
-
 }
 
-# # Sanity check
-# lapply(lodf, function(d) head(d[, .(decimalCoordinates,
-#                                    country,
-#                                    county)]))
-#
-# pts_plot <- lapply(lodf,
-#                    function(d) d[, .(decimalCoordinates, country)])
-# pts_plot <- lapply(seq_along(pts_plot),
-#                    function(i) pts_plot[[i]][, src := names(pts_plot)[i]])
-# pts_plot <- do.call("rbind", pts_plot)
-# pts_plot <- st_as_sf(pts_plot, wkt = "decimalCoordinates")
-# st_crs(pts_plot) <- 4326
-#
-# bbox <- st_bbox(pts_plot)
-#
-# # Get Natural Earth contries
-# countries <- ne_countries(continent = c("Europe", "Asia"),
-#                           scale = 10)
-# countries <- st_make_valid(countries)
-#
-# library(ggplot2)
-# ggplot() +
-#   geom_sf(data = countries, fill = "grey75") +
-#   geom_sf(data = pts_plot, aes(color = src),
-#           size = 1, show.legend = "point") +
-#   scale_color_viridis_d() +
-#   xlim(bbox["xmin"], bbox["xmax"]) +
-#   ylim(bbox["ymin"], bbox["ymax"])
+
+# Check!! (should be all empty)
+lapply(lodf,
+       function(d) d[is.na(decimalCoordinates), .(is.na(decimalCoordinates), country, county)])
 
 lodf <- do.call("rbind", lodf)
 
 # Remove verbatim
 lodf <- df_all_cols(lodf, cols)
 
+# Unique
+lodf <- unique(lodf)
+
+# Commented out constraint because of error
+# ERROR:  index row size 3048 exceeds btree version 4 maximum 2704 for index "Location_decimalCoordinates_coordinateUncertaintyInMeters_l_key"
+# DETAIL:  Index row references tuple (3337,1) in relation "Location".
+# HINT:  Values larger than 1/3 of a buffer page cannot be indexed.
+# Consider a function index of an MD5 hash of the value, or use full text indexing.
+# CONTEXT:  COPY Location, line 1086752
 if (populate_db) {
   dbAppendTable(con, "Location", lodf)
 }
@@ -476,6 +495,14 @@ cols <- colnames_DB(con, "Event", rm_ID = TRUE)
 cols <- cols[cols!= "parentEventID"]
 cols <- c(cols, "parentLocationID")
 
+# Correct issues in eventType
+lapply(dat,
+       function(d) unique(d[, eventType]))
+
+dat <- lapply(dat,
+              function(d) d[eventType == "TransectCount",
+                            eventType := "Transect"])
+
 evdf <- lapply(dat, df_all_cols, cols = cols)
 
 ### Reformat to add parent event -----
@@ -536,6 +563,12 @@ if (populate_db) {
                        on = "parentLocationID"]
   evdf_nopar <- evdf_nopar[, parentLocationID := NULL]
 
+  # There are a lot of identical events except for covariates,
+  # so removed database constraint on unicity (to check)
+  dup <- evdf_nopar[duplicated(evdf_nopar[, .(locationID, eventDateID, recorderID,
+                                              datasetID, eventType, parentEventID)]),]
+  table(dup$datasetID, useNA = "always")
+
   dbAppendTable(con, "Event", evdf_nopar)
 }
 
@@ -572,25 +605,14 @@ lapply(dat, function(d) any(is.na(d$eventID)))
 cols <- colnames_DB(con, "Occurrence", rm_ID = TRUE)
 
 oc_df <- lapply(dat, df_all_cols, cols)
+
+# Should be corrected
+lapply(oc_df, function(d) unique(d$sex))
+
 oc_df <- do.call("rbind", oc_df)
-oc_df <- unique(oc_df)
+# oc_df <- unique(oc_df)
 
 if (populate_db) {
   dbAppendTable(con, "Occurrence", oc_df)
 }
 
-ev_db <- dbGetQuery(con, 'SELECT "species",
-                          ST_AsText("decimalCoordinates") AS "decimalCoordinates",
-                          "eventDate", "Event"."datasetID", "datasetName", "parentDatasetID"
-                          FROM "Taxon"
-                          LEFT JOIN "Occurrence"
-                              ON "Taxon"."taxonID" = "Occurrence"."taxonID"
-                          LEFT JOIN "Event"
-                              ON "Event"."eventID" = "Occurrence"."eventID"
-                          LEFT JOIN "EventDate"
-                              ON "Event"."eventDateID" = "EventDate"."eventDateID"
-                          LEFT JOIN "Location"
-                              ON "Event"."locationID" = "Location"."locationID"
-                          LEFT JOIN "Dataset"
-                              ON "Event"."datasetID" = "Dataset"."datasetID";')
-ev_db

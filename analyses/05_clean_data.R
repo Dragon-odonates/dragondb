@@ -28,6 +28,7 @@ read_folder <- here("data/02_data_std")
 # Read data ---------------------------------------------------------------
 ls <- list.files(read_folder,
                  full.names = TRUE)
+# ls <- ls[c(4, 7, 8, 11)]
 
 nam <- gsub("\\.csv$", "", basename(ls))
 
@@ -368,9 +369,6 @@ lapply(dat,
 
 ## Recode life stage -----
 
-# # Will be useless once key is changed
-# setnames(dat$Catalonia,
-#          old = "individualCount", new = "lifeStage_count_na")
 
 # Code key/value
 lifestage_key <- c("adult", "exuvia", "larva", "immature", NA)
