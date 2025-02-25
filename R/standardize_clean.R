@@ -115,7 +115,7 @@ clean_coord <- function(coord, na_char = "^\\s*$") {
   }
 
   coord <- unlist(lapply(coord,
-                         match_or_na, reg = "\\d+\\.*\\d*")
+                         match_or_na, reg = "-*\\d+\\.*\\d*")
   )
   coord <- as.numeric(coord)
 
